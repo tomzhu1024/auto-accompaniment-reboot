@@ -1,63 +1,53 @@
-import wave
-
 import matplotlib.pyplot as plt
 import numpy as np
-import pyaudio
 
 
-def plot_sf_perf(config):
-    perf = np.load('output/%s/perf.npy' % config['name'])
-    chunk_dur = config['perf_chunk'] / config['perf_sr']
-    start = 1 * chunk_dur
-    end = (len(perf) + 1) * chunk_dur
-    ax_time = np.arange(start, end, chunk_dur)
-    plt.plot(ax_time, perf * 1000, '.', color='deepskyblue')
-    plt.title('Performance Statistic')
-    plt.xlabel('Time - s')
-    plt.ylabel('Analysis Interval - ms')
-    plt.hlines(config['perf_chunk'] / config['perf_sr'] * 1000, start, end, color='darkred')
+def plot_progress(dir_name):
+    sf_progress_time = np.load('output/%s/sf_progress_time.npy' % dir_name)
+    sf_progress_pos = np.load('output/%s/sf_progress_pos.npy' % dir_name)
+    sf_progress_conf = np.load('output/%s/sf_progress_conf.npy' % dir_name)
+    sf_progress_report = np.load('output/%s/sf_progress_report.npy' % dir_name)
+    ac_progress_time = np.load('output/%s/ac_progress_time.npy' % dir_name)
+    ac_progress_pos = np.load('output/%s/ac_progress_pos.npy' % dir_name)
+    time_baseline = np.min(np.concatenate((sf_progress_time, ac_progress_time)))
+    sf_progress_time -= time_baseline
+    ac_progress_time -= time_baseline
+
+    plt.scatter(sf_progress_time[sf_progress_report == 0], sf_progress_pos[sf_progress_report == 0], marker='.',
+                c=(0.5 + sf_progress_conf)[sf_progress_report == 0], vmin=0, vmax=1, cmap='Blues', label='SF')
+    plt.scatter(sf_progress_time[sf_progress_report == 1], sf_progress_pos[sf_progress_report == 1], marker='*',
+                c=(0.5 + sf_progress_conf)[sf_progress_report == 1], vmin=0, vmax=1, cmap='Purples',
+                label='SF (reported)')
+    plt.scatter(ac_progress_time, ac_progress_pos, marker='.', color='orange', label='AC')
+
+    plt.title('Progress Graph')
+    plt.xlabel('Audio time (s)')
+    plt.ylabel('Score time (s)')
+    plt.legend()
     plt.show()
 
 
-def plot_sf_core(config):
-    p_ij = np.load('output/%s/ij.npy' % config['name'])
-    p_i = np.load('output/%s/i.npy' % config['name'])
-    p_v = np.load('output/%s/v.npy' % config['name'])
-    p_post = np.load('output/%s/post.npy' % config['name'])
-    assert len(p_ij) == len(p_i) == len(p_v)
-    wf = wave.open(config['perf_audio'], 'rb')
-    audio = pyaudio.PyAudio()
-    stream = audio.open(format=audio.get_format_from_width(wf.getsampwidth()),
-                        channels=wf.getnchannels(),
-                        rate=wf.getframerate(),
-                        output=True)
-    i = 0
-    wf.setpos(i * config['perf_chunk'])
-    bytes_read = wf.readframes(config['perf_chunk'])
-    while i < len(p_ij) and bytes_read:
-        stream.write(bytes_read)
-        plt.subplot(411)
-        plt.plot(p_ij[i])
-        plt.subplot(412)
-        plt.plot(p_i[i])
-        plt.subplot(413)
-        plt.plot(p_v[i])
-        plt.subplot(414)
-        plt.plot(p_post[i])
-        plt.vlines(50, 0, 1, color='red')
-        plt.show()
-        i += 1
-        bytes_read = wf.readframes(config['perf_chunk'])
+def plot_sf_lagging(dir_name):
+    sf_time_cost = np.load('output/%s/sf_time_cost.npy' % dir_name)
+    plt.plot(sf_time_cost * 1000, '.-', color='blue', alpha=0.25)
+    plt.title('SF Lagging')
+    plt.ylabel('Lagging (ms)')
+    plt.show()
+
+
+def plot_ac_lagging(dir_name):
+    ac_progress_time = np.load('output/%s/ac_progress_time.npy' % dir_name)
+    lagging = np.array([(ac_progress_time[i + 1] - ac_progress_time[i]) for i in range(len(ac_progress_time) - 1)])
+    plt.plot(lagging * 1000, '.-', color='blue', alpha=0.25)
+    plt.title('AC Lagging')
+    plt.ylabel('Lagging (ms)')
+    plt.show()
 
 
 if __name__ == '__main__':
-    test_config = {
-        'name': 'debug_2',
-        'perf_audio': 'audio/audio3.wav',
-        'perf_chunk': 1024,
-        'perf_sr': 44100,
-        'score_midi': 'midi/midi3.mid',
-        'score_resolution': 0.01
+    my_config = {
+        'name': '20201112-006'
     }
-    plot_sf_perf(test_config)
-    plot_sf_core(test_config)
+    plot_progress(my_config['name'])
+    plot_sf_lagging(my_config['name'])
+    plot_ac_lagging(my_config['name'])

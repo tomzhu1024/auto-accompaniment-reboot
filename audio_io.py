@@ -10,15 +10,6 @@ import pyaudio
 
 import shared_utils
 
-base_path = os.path.dirname(os.path.abspath(__file__))
-bin_path = os.path.join(base_path, 'bin')
-os.environ['PATH'] = bin_path + os.pathsep + os.environ['PATH']
-
-# default pyFluidsynth from PyPi doesn't work with fluidsynth 2
-# a newer modified pyFluidsynth is required to support fluidsynth 2
-# for more information, visit https://ksvi.mff.cuni.cz/~dingle/2019/prog_1/python_music.html
-import fluidsynth
-
 
 class AudioInput:
     # abstract class that should never be instantiated
@@ -116,7 +107,7 @@ class MicrophoneInput(AudioInput):
         super().__init__(config)
 
         self._samp_rate = config['perf_sr']
-        self._dump = config['dump_mic']
+        self._dump = config['dump']
         self._chunk_dur = self._chunk / self._samp_rate
 
         self._audio = pyaudio.PyAudio()
@@ -154,7 +145,7 @@ class MicrophoneInput(AudioInput):
 
         if self._dump:
             shared_utils.check_dir('output', self._dump_dir)
-            wave_file = wave.open('output/%s/mic.wav' % self._dump_dir, 'wb')
+            wave_file = wave.open('output/%s/audio_mic.wav' % self._dump_dir, 'wb')
             wave_file.setnchannels(1)
             wave_file.setsampwidth(2)
             wave_file.setframerate(self._samp_rate)
@@ -162,34 +153,25 @@ class MicrophoneInput(AudioInput):
             wave_file.close()
 
 
-class AudioOutput:
-    # abstract class that should never be instantiated
-    def loop(self):
+class MIDISynthesizer:
+    def note_on(self, pitch, velocity):
         pass
 
-    def change_tempo_ratio(self, tempo_ratio):
+    def note_off(self, pitch):
         pass
 
-    def kill(self):
+    def close(self):
         pass
 
 
-class MIDIPlayer(AudioOutput):
-    TICK_INT = 0.01  # second to wait between ticks, note that time.sleep() is not accurate
-    STREAM_WAIT = 0.5  # second to wait before and after playing
+class VirtualSynthesizer(MIDISynthesizer):
+    def __init__(self):
+        base_path = os.path.dirname(os.path.abspath(__file__))
+        bin_path = os.path.join(base_path, 'bin')
+        os.environ['PATH'] = bin_path + os.pathsep + os.environ['PATH']
 
-    def __init__(self, config):
-        self._midi_path = config['acco_midi']
-
-        self._midi_events, self._midi_tempo = MIDIPlayer._load_midi(self._midi_path)  # tempo in BPS
-        self._event_pos = 0  # all MIDI events must be executed in sequence, keep track of execution position
-        self._cur_pos = 0  # current position in beat, updated every tick
-        self._cur_tempo = self._midi_tempo  # current tempo in BPS, same as midi's tempo at first
-        self._prev_tick = 0  # time of previous tick
-        self._first_run = True  # flag
-        self._running = True  # flag
-
-        self._proc = None
+        # https://ksvi.mff.cuni.cz/~dingle/2019/prog_1/python_music.html
+        import fluidsynth
 
         self._fs = fluidsynth.Synth()
         # automatically select driver based on platform
@@ -202,8 +184,78 @@ class MIDIPlayer(AudioOutput):
             raise Exception('unsupported platform')
         sf = self._fs.sfload(r'resources/soundfont.sf2')
         self._fs.program_select(0, sf, 0, 0)
-        # wait, sometimes stream does not open immediately
-        time.sleep(MIDIPlayer.STREAM_WAIT)
+
+    def note_on(self, pitch, velocity):
+        self._fs.noteon(0, pitch, velocity)
+
+    def note_off(self, pitch):
+        self._fs.noteoff(0, pitch)
+
+    def close(self):
+        self._fs.delete()
+
+
+class ExternalSynthesizer(MIDISynthesizer):
+    PORT_ID = 1
+
+    def __init__(self):
+        import rtmidi
+
+        self._midi_port = rtmidi.MidiOut()
+        available_ports = self._midi_port.get_ports()
+        print('Available ports:', available_ports)
+        print('Using port:', available_ports[ExternalSynthesizer.PORT_ID])
+        if available_ports:
+            self._midi_port.open_port(ExternalSynthesizer.PORT_ID)
+        else:
+            raise Exception('no available port')
+
+    def note_on(self, pitch, velocity):
+        self._midi_port.send_message([0x90, pitch, velocity])
+
+    def note_off(self, pitch):
+        self._midi_port.send_message([0x80, pitch, 0])
+
+    def close(self):
+        del self._midi_port
+
+
+class AudioOutput:
+    def __init__(self):
+        self._running = True  # flag
+        self._proc = None
+
+    def connect_to_proc(self, proc):
+        self._proc = proc
+
+    def loop(self):
+        pass
+
+    def kill(self):
+        self._running = False
+
+    def change_tempo_ratio(self, ratio):
+        pass
+
+    @property
+    def current_time(self):
+        return
+
+
+class MIDIPlayer(AudioOutput):
+    TICK_INT = 0.02  # second to wait between ticks, note that time.sleep() is not accurate
+
+    def __init__(self, midi_path, output: MIDISynthesizer):
+        super().__init__()
+
+        self._midi_events, self._midi_tempo = MIDIPlayer._load_midi(midi_path)  # tempo in BPS
+        self._event_pos = 0  # all MIDI events must be executed in sequence, keep track of execution position
+        self._cur_pos = 0  # current position in beat, updated every tick
+        self._cur_tempo = self._midi_tempo  # current tempo in BPS, same as midi's tempo at first
+        self._prev_tick = 0  # time of previous tick
+        self._first_run = True  # flag
+
+        self._output = output
 
     @staticmethod
     def _load_midi(midi_path):
@@ -222,23 +274,13 @@ class MIDIPlayer(AudioOutput):
         events = sorted(events, key=lambda x: (x[0], x[1]))
         return events, bps
 
-    def connect_to_proc(self, proc):
-        self._proc = proc
-
     def loop(self):
         # start looping
         while self._running:
             self._tick()
             time.sleep(MIDIPlayer.TICK_INT)
         # some internal cleaning work
-        time.sleep(MIDIPlayer.STREAM_WAIT)
-        self._fs.delete()
-
-    def change_tempo_ratio(self, ratio):
-        self._cur_tempo = self._midi_tempo * ratio
-
-    def kill(self):
-        self._running = False
+        self._output.close()
 
     def _tick(self):
         # time.sleep() is inaccurate, always use time.time() for time measurement
@@ -258,9 +300,9 @@ class MIDIPlayer(AudioOutput):
         while self._event_pos < len(self._midi_events) and self._midi_events[self._event_pos][0] <= self._cur_pos:
             ev = self._midi_events[self._event_pos]
             if ev[1] == 1:
-                self._fs.noteon(0, ev[2], ev[3])
+                self._output.note_on(ev[2], ev[3])
             elif ev[1] == 0:
-                self._fs.noteoff(0, ev[2])
+                self._output.note_off(ev[2])
             self._event_pos += 1
         # execute external processor
         self._proc(cur_tick, self)
@@ -268,40 +310,9 @@ class MIDIPlayer(AudioOutput):
         if self._event_pos >= len(self._midi_events):
             self.kill()
 
+    def change_tempo_ratio(self, ratio):
+        self._cur_tempo = self._midi_tempo * ratio
+
     @property
-    def current_position(self):
-        return self._cur_pos
-
-
-class WaveFileOutput(AudioOutput):
-    # TODO: implement realtime tempo-variable wave file player
-    pass
-
-
-if __name__ == '__main__':
-    test_config = {
-        'name': 'audio_io_debug',
-        'perf_audio': 'audio/audio3.wav',
-        'perf_chunk': 1024,
-        'perf_sr': 44100,
-        'dump_mic': True,
-        'acco_midi': 'midi/midi4_quick.mid'
-    }
-
-    # def test_proc(audio_time, prev_time, audio_data, audio_input):
-    #     if audio_time > test_input.start_time + 15.0:
-    #         audio_input.kill()
-    #     la = int(abs(round(min(audio_data), 1) * 10))
-    #     ra = int(abs(round(max(audio_data), 1) * 10))
-    #     print('Time', format(audio_time - test_input.start_time, '8.5f'),
-    #           '\tDuration', format(audio_time - prev_time, '8.5f'),
-    #           '\tMin/Max', '[', '-' * (10 - la) + '#' * (la + ra) + '-' * (10 - ra), ']')
-    #
-    #
-    # test_input = WaveFileInput(test_config)
-    # test_input.connect_to_proc(test_proc)
-    # test_input.loop()
-
-    test_mp = MIDIPlayer(test_config)
-    test_mp.connect_to_proc(lambda *args: None)
-    test_mp.loop()
+    def current_time(self):
+        return self._cur_pos / self._midi_tempo

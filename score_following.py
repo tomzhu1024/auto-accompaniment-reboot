@@ -1,42 +1,18 @@
 import math
-import multiprocessing
 import time
 
 import numpy as np
 import pretty_midi
-import statsmodels.api as sm
 
 import audio_io
 import shared_utils
 import signal_processing
-
-
-def normalize(array):
-    return np.true_divide(array, np.sum(array))
-
-
-def norm_pdf(x, mean, sd=1):
-    var = sd ** 2
-    denom = (2 * math.pi * var) ** 0.5
-    num = math.exp(-(x - mean) ** 2 / (2 * var))
-    return num / denom
-
-
-def similarity(left, right):
-    return (min(left, right) + 1e-6) / (max(left, right) + 1e-6)
-
-
-def gate_mask(array, center, half_size):
-    left_index = max(0, center - half_size)
-    right_index = min(center + half_size, len(array))
-    array[:left_index] = 0
-    array[right_index:] = 0
-    return array
+import udp_pipe
 
 
 class ScoreFollower:
-    # sax_ means Score AXis
-    # a_ means Audio
+    # sax means Score AXis
+    # a means Audio
     RESOLUTION = 0.01
 
     def __init__(self, config):
@@ -47,7 +23,8 @@ class ScoreFollower:
         self._f_source[0] = 1.0
         self._cur_pos = 0
         self._estimated_tempo = self._score_tempo
-        self._prev_report_pos = 0
+        # self._prev_report_pos = 0
+        self._prev_report_time = 0
         self._prev_tempo_pos = 0
         self._prev_tempo_time = 0
         self._first_run = True
@@ -63,11 +40,10 @@ class ScoreFollower:
         self._audio_input.connect_to_proc(self._proc)
         self._pitch_proc = signal_processing.PitchProcessor(config)
         self._onset_proc = signal_processing.OnsetProcessor(config)
-
-        self._auto_acco = AutoAccompaniment(config, self._score_tempo)
+        self._msg_sender = udp_pipe.UDPSender()
 
         # dump information for debug purpose
-        self._dump = config['dump_sf']
+        self._dump = config['dump']
         if self._dump:
             self._dump_dir = config['name']
             # dump midi
@@ -76,13 +52,18 @@ class ScoreFollower:
             piano = pretty_midi.Instrument(program=pretty_midi.instrument_name_to_program('Cello'))
             self._d_midi_new.instruments.append(piano)
             self._d_midi_pos = 0
-            # dump plot
-            self._d_plot_ij = []
-            self._d_plot_i = []
-            self._d_plot_v = []
-            self._d_plot_post = []  # posterior
-            # dump performance info
-            self._d_perf = []
+            # dump time-position graph
+            self._d_progress_time = []
+            self._d_progress_pos = []
+            self._d_progress_conf = []
+            self._d_progress_report = []
+            # dump snapshots
+            self._d_snapshot_ij = []
+            self._d_snapshot_i = []
+            self._d_snapshot_v = []
+            self._d_snapshot_posterior = []
+            # dump time cost
+            self._d_time_cost = []
             self._perf_start = 0
 
     @staticmethod
@@ -107,18 +88,25 @@ class ScoreFollower:
         return score_tempo, sax_time, sax_pitch, sax_onset, sax_length
 
     def loop(self):
-        self._auto_acco.loop()  # non-blocking, start new process for playing
-        print('\t\tAuto acco proc started')
         self._audio_input.loop()  # blocking, block main process for reading, use separate thread for processing
         # some cleaning work after loop
+        # kill auto accompaniment process
+        self._msg_sender({
+            'type': 'stop'
+        })
+        self._msg_sender.close()
         if self._dump:
             shared_utils.check_dir('output', self._dump_dir)
-            self._d_midi_new.write('output/%s/sf.mid' % self._dump_dir)
-            np.save('output/%s/ij.npy' % self._dump_dir, self._d_plot_ij)
-            np.save('output/%s/i.npy' % self._dump_dir, self._d_plot_i)
-            np.save('output/%s/v.npy' % self._dump_dir, self._d_plot_v)
-            np.save('output/%s/post.npy' % self._dump_dir, self._d_plot_post)
-            np.save('output/%s/perf.npy' % self._dump_dir, self._d_perf)
+            self._d_midi_new.write('output/%s/sf_result.mid' % self._dump_dir)
+            np.save('output/%s/sf_snapshot_ij.npy' % self._dump_dir, self._d_snapshot_ij)
+            np.save('output/%s/sf_snapshot_i.npy' % self._dump_dir, self._d_snapshot_i)
+            np.save('output/%s/sf_snapshot_v.npy' % self._dump_dir, self._d_snapshot_v)
+            np.save('output/%s/sf_snapshot_posterior.npy' % self._dump_dir, self._d_snapshot_posterior)
+            np.save('output/%s/sf_time_cost.npy' % self._dump_dir, self._d_time_cost)
+            np.save('output/%s/sf_progress_time.npy' % self._dump_dir, self._d_progress_time)
+            np.save('output/%s/sf_progress_pos.npy' % self._dump_dir, self._d_progress_pos)
+            np.save('output/%s/sf_progress_conf.npy' % self._dump_dir, self._d_progress_conf)
+            np.save('output/%s/sf_progress_report.npy' % self._dump_dir, self._d_progress_report)
 
     def _proc(self, a_time, prev_a_time, a_data, a_input: audio_io.AudioInput):
         # called by audio input, execute in thread pool
@@ -127,8 +115,14 @@ class ScoreFollower:
 
         if self._first_run:
             self._first_run = False
-            # only execute in the first time
+            self._prev_report_time = a_input.start_time
             self._prev_tempo_time = a_input.start_time
+            # send message to activate auto accompaniment
+            self._msg_sender({
+                'type': 'start',
+                'time': a_time,
+                'tempo': self._score_tempo
+            })
 
         a_pitch = self._pitch_proc(a_data)
         a_onset = self._onset_proc(a_data)
@@ -169,16 +163,16 @@ class ScoreFollower:
                                                          w=w)
         # posterior
         self._f_source = f_i_given_d * f_v_given_i
-        self._f_source = gate_mask(self._f_source, center=self._cur_pos, half_size=50)
-        self._f_source = normalize(self._f_source)
+        self._f_source = ScoreFollower._gate_mask(self._f_source, center=self._cur_pos, half_size=50)
+        self._f_source = ScoreFollower._normalize(self._f_source)
         # update position again
         self._cur_pos = np.argmax(self._f_source)
 
         if self._dump:
             if self._no_move:
-                self._d_plot_ij.append(np.zeros(100))
+                self._d_snapshot_ij.append(np.zeros(100))
             else:
-                self._d_plot_ij.append(f_i_j_given_d[:100])
+                self._d_snapshot_ij.append(f_i_j_given_d[:100])
             p_i = np.zeros(100)
             p_v = np.zeros(100)
             p_post = np.zeros(100)
@@ -187,41 +181,43 @@ class ScoreFollower:
                     p_i[i] = f_i_given_d[self._cur_pos - 50 + i]
                     p_v[i] = f_v_given_i[self._cur_pos - 50 + i]
                     p_post[i] = self._f_source[self._cur_pos - 50 + i]
-            self._d_plot_i.append(p_i)
-            self._d_plot_v.append(p_v)
-            self._d_plot_post.append(p_post)
+            self._d_snapshot_i.append(p_i)
+            self._d_snapshot_v.append(p_v)
+            self._d_snapshot_posterior.append(p_post)
+            self._d_progress_time.append(a_time)
+            self._d_progress_pos.append(self._sax_time[self._cur_pos])
+            self._d_progress_conf.append(self._f_source[self._cur_pos])
 
         # determine no_move flag
         # if no sound in performance, do not push forward before the start of a note
         if self._cur_pos < self._sax_length - 1:
-            # self._no_move = a_pitch == signal_processing.PitchProcessorCore.NO_PITCH and \
-            #                 self._sax_pitch[self._cur_pos + 1] != signal_processing.PitchProcessorCore.NO_PITCH
-            if a_pitch == signal_processing.PitchProcessorCore.NO_PITCH and \
-                    self._sax_pitch[self._cur_pos + 1] != signal_processing.PitchProcessorCore.NO_PITCH:
-                self._no_move = True
-            elif a_pitch == signal_processing.PitchProcessorCore.NO_PITCH and \
-                    self._sax_pitch[self._cur_pos] != signal_processing.PitchProcessorCore.NO_PITCH:
-                self._no_move = True
-            else:
-                self._no_move = False
+            self._no_move = a_pitch == signal_processing.PitchProcessorCore.NO_PITCH and \
+                            (self._sax_pitch[self._cur_pos + 1] != signal_processing.PitchProcessorCore.NO_PITCH or
+                             self._sax_pitch[self._cur_pos] != signal_processing.PitchProcessorCore.NO_PITCH)
 
-        # actively close audio input if follows to the end
-        # if self._cur_pos >= self._sax_length - 1:
-        if self._cur_pos >= 6000:
+        # forcefully close audio input if follows to the end
+        if self._cur_pos >= self._sax_length / 10 - 1:
+            # this branch won't be executed if the audio input closes on its own
             a_input.kill()
-            # kill auto accompaniment process
-            self._auto_acco.enqueue((-1, -1, -1))
 
         # periodically housekeeping tasks
-        # report information to downstream module
-        if (self._cur_pos - self._prev_report_pos) / 100 > 60 / self._estimated_tempo * 1:
-            # (timestamp, position in beat, confidence)
-            self._auto_acco.enqueue((
-                a_time,
-                self._sax_time[self._cur_pos] * self._score_tempo / 60,  # score_tempo is in BPM, we need BPS
-                self._f_source[self._cur_pos]
-            ))
-            self._prev_report_pos = self._cur_pos
+        # report information to accompaniment module
+        # if (self._cur_pos - self._prev_report_pos) / 100 > 60 / self._estimated_tempo * 0.5:
+        if a_time - self._prev_report_time > 1:
+            # timestamp, position in beat, confidence
+            self._msg_sender({
+                'type': 'update',
+                'time': a_time,
+                'pos': self._sax_time[self._cur_pos] / 60 * self._score_tempo,  # sec / 60 * BPM = beat
+                'conf': self._f_source[self._cur_pos]
+            })
+            # self._prev_report_pos = self._cur_pos
+            self._prev_report_time = a_time
+            if self._dump:
+                self._d_progress_report.append(1)
+        else:
+            if self._dump:
+                self._d_progress_report.append(0)
         # re-estimate tempo
         if (self._cur_pos - self._prev_tempo_pos) / 100 > 60 / self._estimated_tempo * 2:
             estimated_tempo = ScoreFollower._estimate_tempo(score_tempo=self._score_tempo,
@@ -232,7 +228,6 @@ class ScoreFollower:
             self._estimated_tempo = estimated_tempo
             self._prev_tempo_pos = self._cur_pos
             self._prev_tempo_time = a_time
-            print('SF: tempo set to', estimated_tempo)
 
         if self._dump:
             while self._d_midi_pos < len(self._d_midi_ref.instruments[0].notes) and \
@@ -244,7 +239,7 @@ class ScoreFollower:
                                                                               start=start,
                                                                               end=start + o_note.end - o_note.start))
                 self._d_midi_pos += 1
-            self._d_perf.append(time.perf_counter() - self._perf_start)
+            self._d_time_cost.append(time.perf_counter() - self._perf_start)
 
     @staticmethod
     def _compute_f_i_j_given_d(time_axis, d, score_tempo, estimated_tempo):
@@ -257,7 +252,7 @@ class ScoreFollower:
         f_i_j_given_d = np.multiply(a, b)
         # remove the possible np.nan element in the beginning, otherwise normalization will fail
         f_i_j_given_d[time_axis == 0] = 0
-        f_i_j_given_d = normalize(f_i_j_given_d)
+        f_i_j_given_d = ScoreFollower._normalize(f_i_j_given_d)
         return f_i_j_given_d
 
     @staticmethod
@@ -271,7 +266,7 @@ class ScoreFollower:
         f_i_given_d_w = np.convolve(f_source_w, f_i_j_given_d_w)
         f_i_given_d_w = f_i_given_d_w[:right - left]  # slice to window size
         f_i_given_d[left:right] = f_i_given_d_w
-        f_i_given_d = normalize(f_i_given_d)
+        f_i_given_d = ScoreFollower._normalize(f_i_given_d)
         return f_i_given_d
 
     # TODO: rewrite this to better model
@@ -297,8 +292,8 @@ class ScoreFollower:
                 else:
                     # score side also makes sound
                     f_v_given_i[i] = math.pow(
-                        math.pow(norm_pdf(pitch_proc.result(pitch_axis[i]), pitch_axis[i], 1), w[0])
-                        * math.pow(similarity(audio_onset, onset_axis[i]), w[1]),
+                        math.pow(ScoreFollower._norm_pdf(pitch_proc.result(pitch_axis[i]), pitch_axis[i], 1), w[0])
+                        * math.pow(ScoreFollower._similarity(audio_onset, onset_axis[i]), w[1]),
                         w[2]
                     )
         return f_v_given_i
@@ -307,95 +302,56 @@ class ScoreFollower:
     def _estimate_tempo(score_tempo, delta_pos, delta_time):
         return delta_pos * score_tempo * ScoreFollower.RESOLUTION / delta_time
 
+    @staticmethod
+    def _normalize(array):
+        return np.true_divide(array, np.sum(array))
 
-class AutoAccompaniment:
-    # fax_ means score Following AXis
-    DEPTH = 5
-    LATENCY = 0.02
+    @staticmethod
+    def _norm_pdf(x, mean, sd=1):
+        var = sd ** 2
+        denom = (2 * math.pi * var) ** 0.5
+        num = math.exp(-(x - mean) ** 2 / (2 * var))
+        return num / denom
 
-    def __init__(self, config, score_bpm):
-        self._config = config
-        self._score_bps = score_bpm / 60
-        self._fax_time = np.array([float(-x) for x in range(AutoAccompaniment.DEPTH)])
-        self._fax_pos = np.array([-self._score_bps * x for x in range(AutoAccompaniment.DEPTH)])
-        self._fax_conf = np.full(AutoAccompaniment.DEPTH, 0.001)
-        self._first_run = True
-        self._start_time = 0
+    @staticmethod
+    def _similarity(left, right):
+        return (min(left, right) + 1e-6) / (max(left, right) + 1e-6)
 
-        self._worker = None
-        self._msg_queue = multiprocessing.Queue()
-
-    def _worker_func(self):
-        # run in a separate process
-        if self._config['acco_mode'] == 0:
-            self._player = audio_io.MIDIPlayer(self._config)
-        self._player.connect_to_proc(self._proc)
-        self._player.loop()  # blocking
-
-    def _proc(self, a_time, a_output: audio_io.AudioOutput):
-        # called by audio output, in separate process
-        # MEMORY IS NOT SHARED! ONLY _msg_queue IS SAFE! USE OTHER VARIABLES VERY CAREFULLY!
-        if self._first_run:
-            self._first_run = False
-            self._start_time = a_time
-
-        has_update = False
-        while self._msg_queue.qsize() > 0:
-            has_update = True
-            # (timestamp, position in beat, confidence)
-            frame = self._msg_queue.get()
-            # kill signal from score following
-            if frame == (-1, -1, -1):
-                self._player.kill()
-            self._fax_time = np.roll(self._fax_time, 1)
-            self._fax_time[0] = frame[0] - self._start_time
-            self._fax_pos = np.roll(self._fax_pos, 1)
-            self._fax_pos[0] = frame[1]
-            self._fax_conf = np.roll(self._fax_conf, 1)
-            self._fax_conf[0] = frame[2]
-        if has_update:
-            # all beats mean beats in performance score
-            wls_model = sm.WLS(self._fax_pos, sm.add_constant(self._fax_time), weights=self._fax_conf)
-            perf_tempo = wls_model.fit().params[1]  # estimated performance tempo in BPS, use weighted linear regression
-            # plan to converge after 4 beats, beat / (beat/second) = second
-            target_pos = (a_time - self._start_time - self._fax_time[0]) * perf_tempo + 4 + self._fax_pos[0]
-            follow_time = 4 / perf_tempo - AutoAccompaniment.LATENCY
-            follow_tempo = (target_pos - a_output.current_position) / follow_time  # new tempo in BPS
-            follow_tempo = max(0, follow_tempo)
-            follow_tempo_ratio = follow_tempo / self._score_bps  # ratio compared to original performance tempo
-            a_output.change_tempo_ratio(follow_tempo_ratio)
-            print('\t\t\t\tAA: perf_tempo', perf_tempo, 'current_pos', a_output.current_position, 'target_pos',
-                  target_pos, 'follow_time', follow_time,
-                  'follow_tempo', follow_tempo)
-            print(self._fax_time)
-            print(self._fax_pos)
-            print(self._fax_conf)
-
-    def enqueue(self, item):
-        # called by score following processor, in separate thread
-        # (timestamp, position in beat, confidence)
-        self._msg_queue.put(item)
-
-    def loop(self):
-        # called by main thread
-        # creating a new process works similar to fork() in Linux/Unix, therefore, assign values before this action
-        self._worker = multiprocessing.Process(target=self._worker_func, args=(), daemon=False)
-        self._worker.start()
+    @staticmethod
+    def _gate_mask(array, center, half_size):
+        left_index = max(0, center - half_size)
+        right_index = min(center + half_size, len(array))
+        array[:left_index] = 0
+        array[right_index:] = 0
+        return array
 
 
 if __name__ == '__main__':
-    test_config = {
-        'name': 'debug_3_fix_2',
+    my_config = {
+        'name': '20201112-006',
+
+        # Input mode of performance
+        #   0 - wave file
+        #   1 - microphone
         'perf_mode': 0,
-        'perf_audio': 'audio/audio3.wav',
+
+        # File path of performance wave file
+        #   takes effects only when perf_mode is set to 0
+        'perf_audio': 'resources/audio3.wav',
+
+        # Sample rate of performance input
+        #   takes effects only when perf_mode is set to 1
+        #   when perf_mode is set to 0, this value will be overwritten by wave file's sample rate
         'perf_sr': 44100,
+
+        # Number of samples processed in each iteration
         'perf_chunk': 1024,
-        'score_midi': 'midi/midi3.mid',
-        'acco_mode': 0,
-        'acco_midi': 'midi/midi3.mid',
-        'acco_audio': 'audio/audio3.wav',
-        'dump_mic': False,
-        'dump_sf': True
+
+        # File path of score MIDI file (score)
+        'score_midi': 'resources/midi3.mid',
+
+        # More output for debug purpose
+        'dump': True
     }
-    test_sf = ScoreFollower(test_config)
-    test_sf.loop()
+    app = ScoreFollower(my_config)
+    app.loop()

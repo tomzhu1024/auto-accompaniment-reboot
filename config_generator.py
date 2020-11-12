@@ -1,5 +1,7 @@
 import json
 
+import shared_utils
+
 config = {
     'name': 'debug',
 
@@ -14,7 +16,7 @@ config = {
 
     # Sample rate of performance input
     #   takes effects only when perf_mode is set to 1
-    #   when perf_mode is set to 0, this value will be overwritten by wave file's samplerate
+    #   when perf_mode is set to 0, this value will be overwritten by wave file's sample rate
     'perf_sr': 44100,
 
     # Number of samples processed in each iteration
@@ -37,12 +39,13 @@ config = {
     'acco_audio': 'audio/audio3.wav',
 
     # More output for debug purpose
-    'dump_mic': False,  # microphone raw signal
-    'dump_sf': False,  # score following data
+    'dump': True
 }
 
 if __name__ == '__main__':
-    filename = '%s.json' % config['name']
+    config_name = 'default'
+    filename = 'config/%s.json' % config_name
+    shared_utils.check_dir('config')
     with open(filename, 'w') as fs:
         fs.write(json.dumps(config))
     print('configuration saved to %s' % filename)
