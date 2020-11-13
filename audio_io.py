@@ -196,7 +196,7 @@ class VirtualSynthesizer(MIDISynthesizer):
 
 
 class ExternalSynthesizer(MIDISynthesizer):
-    PORT_ID = 1
+    PORT_ID = 2
 
     def __init__(self):
         import rtmidi

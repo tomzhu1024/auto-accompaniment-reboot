@@ -5,6 +5,7 @@ import numpy as np
 import pretty_midi
 
 import audio_io
+import shared_config
 import shared_utils
 import signal_processing
 import udp_pipe
@@ -65,6 +66,8 @@ class ScoreFollower:
             # dump time cost
             self._d_time_cost = []
             self._perf_start = 0
+            # truncating time
+            self._trunc_time = config['trunc_time']
 
     @staticmethod
     def _load_score(midi_path, resolution):
@@ -80,6 +83,9 @@ class ScoreFollower:
         for note in instrument.notes:
             start = int(math.ceil(note.start / resolution))
             end = int(math.ceil(note.end / resolution)) + 1  # end will never go out of range
+            # truncate of note is too long
+            if end - start > int(1 / resolution):
+                end = start + int(1 / resolution)
             pitches[start: end] = note.pitch
             sax_onset[start] = 1
         score_pitch_proc = signal_processing.PitchProcessorCore()
@@ -187,6 +193,15 @@ class ScoreFollower:
             self._d_progress_time.append(a_time)
             self._d_progress_pos.append(self._sax_time[self._cur_pos])
             self._d_progress_conf.append(self._f_source[self._cur_pos])
+            # forcefully close audio input if it reaches truncating time
+            if 0 < self._trunc_time <= a_time - a_input.start_time:
+                # this branch won't be executed if the audio input closes on its own
+                a_input.kill()
+
+        # forcefully close audio input if it follows to the end
+        if self._cur_pos >= self._sax_length - 1:
+            # this branch won't be executed if the audio input closes on its own
+            a_input.kill()
 
         # determine no_move flag
         # if no sound in performance, do not push forward before the start of a note
@@ -194,11 +209,6 @@ class ScoreFollower:
             self._no_move = a_pitch == signal_processing.PitchProcessorCore.NO_PITCH and \
                             (self._sax_pitch[self._cur_pos + 1] != signal_processing.PitchProcessorCore.NO_PITCH or
                              self._sax_pitch[self._cur_pos] != signal_processing.PitchProcessorCore.NO_PITCH)
-
-        # forcefully close audio input if follows to the end
-        if self._cur_pos >= self._sax_length / 10 - 1:
-            # this branch won't be executed if the audio input closes on its own
-            a_input.kill()
 
         # periodically housekeeping tasks
         # report information to accompaniment module
@@ -327,31 +337,5 @@ class ScoreFollower:
 
 
 if __name__ == '__main__':
-    my_config = {
-        'name': '20201112-006',
-
-        # Input mode of performance
-        #   0 - wave file
-        #   1 - microphone
-        'perf_mode': 0,
-
-        # File path of performance wave file
-        #   takes effects only when perf_mode is set to 0
-        'perf_audio': 'resources/audio3.wav',
-
-        # Sample rate of performance input
-        #   takes effects only when perf_mode is set to 1
-        #   when perf_mode is set to 0, this value will be overwritten by wave file's sample rate
-        'perf_sr': 44100,
-
-        # Number of samples processed in each iteration
-        'perf_chunk': 1024,
-
-        # File path of score MIDI file (score)
-        'score_midi': 'resources/midi3.mid',
-
-        # More output for debug purpose
-        'dump': True
-    }
-    app = ScoreFollower(my_config)
+    app = ScoreFollower(shared_config.config)
     app.loop()

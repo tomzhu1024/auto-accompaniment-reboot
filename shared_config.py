@@ -1,18 +1,14 @@
-import json
-
-import shared_utils
-
 config = {
-    'name': 'debug',
+    'name': '20201113-play',
 
     # Input mode of performance
     #   0 - wave file
     #   1 - microphone
-    'perf_mode': 0,
+    'perf_mode': 1,
 
     # File path of performance wave file
     #   takes effects only when perf_mode is set to 0
-    'perf_audio': 'audio/audio3.wav',
+    'perf_audio': 'resources/audio3.wav',
 
     # Sample rate of performance input
     #   takes effects only when perf_mode is set to 1
@@ -23,29 +19,20 @@ config = {
     'perf_chunk': 1024,
 
     # File path of score MIDI file (score)
-    'score_midi': 'midi/midi3.mid',
+    'score_midi': 'resources/midi4.mid',
 
     # Output mode of accompaniment
-    #   0 - MIDI
-    #   1 - wave file
-    'acco_mode': 0,
+    #   0 - Virtual MIDI synthesizer
+    #   1 - External MIDI synthesizer
+    'acco_mode': 1,
 
     # File path of accompaniment MIDI file
     #   takes effect only when acco_mode is set to 0
-    'acco_midi': 'midi/midi3.mid',
-
-    # File path of accompaniment wave file
-    #   takes effect only when acco_mode is set to 1
-    'acco_audio': 'audio/audio3.wav',
+    'acco_midi': 'resources/midi4.mid',
 
     # More output for debug purpose
-    'dump': True
-}
+    'dump': True,
 
-if __name__ == '__main__':
-    config_name = 'default'
-    filename = 'config/%s.json' % config_name
-    shared_utils.check_dir('config')
-    with open(filename, 'w') as fs:
-        fs.write(json.dumps(config))
-    print('configuration saved to %s' % filename)
+    # Stop earlier than the score ends, set to non-positive to disable
+    'trunc_time': 90
+}

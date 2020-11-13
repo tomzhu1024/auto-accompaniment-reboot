@@ -1,6 +1,8 @@
 import matplotlib.pyplot as plt
 import numpy as np
 
+import shared_config
+
 
 def plot_progress(dir_name):
     sf_progress_time = np.load('output/%s/sf_progress_time.npy' % dir_name)
@@ -9,16 +11,20 @@ def plot_progress(dir_name):
     sf_progress_report = np.load('output/%s/sf_progress_report.npy' % dir_name)
     ac_progress_time = np.load('output/%s/ac_progress_time.npy' % dir_name)
     ac_progress_pos = np.load('output/%s/ac_progress_pos.npy' % dir_name)
+    ac_progress_report = np.load('output/%s/ac_progress_report.npy' % dir_name)
     time_baseline = np.min(np.concatenate((sf_progress_time, ac_progress_time)))
     sf_progress_time -= time_baseline
     ac_progress_time -= time_baseline
 
     plt.scatter(sf_progress_time[sf_progress_report == 0], sf_progress_pos[sf_progress_report == 0], marker='.',
-                c=(0.5 + sf_progress_conf)[sf_progress_report == 0], vmin=0, vmax=1, cmap='Blues', label='SF')
-    plt.scatter(sf_progress_time[sf_progress_report == 1], sf_progress_pos[sf_progress_report == 1], marker='*',
-                c=(0.5 + sf_progress_conf)[sf_progress_report == 1], vmin=0, vmax=1, cmap='Purples',
+                c=sf_progress_conf[sf_progress_report == 0], vmin=0, vmax=1, cmap='gray', label='SF')
+    plt.scatter(sf_progress_time[sf_progress_report == 1], sf_progress_pos[sf_progress_report == 1], marker='X',
+                c=sf_progress_conf[sf_progress_report == 1], vmin=0, vmax=1, cmap='gray',
                 label='SF (reported)')
-    plt.scatter(ac_progress_time, ac_progress_pos, marker='.', color='orange', label='AC')
+    plt.scatter(ac_progress_time[ac_progress_report == 0], ac_progress_pos[ac_progress_report == 0], marker='.',
+                color='orange', alpha=0.5, label='AC')
+    plt.scatter(ac_progress_time[ac_progress_report == 1], ac_progress_pos[ac_progress_report == 1], marker='X',
+                color='red', alpha=0.5, label='AC (reported)')
 
     plt.title('Progress Graph')
     plt.xlabel('Audio time (s)')
@@ -45,9 +51,6 @@ def plot_ac_lagging(dir_name):
 
 
 if __name__ == '__main__':
-    my_config = {
-        'name': '20201112-006'
-    }
-    plot_progress(my_config['name'])
-    plot_sf_lagging(my_config['name'])
-    plot_ac_lagging(my_config['name'])
+    plot_progress(shared_config.config['name'])
+    plot_sf_lagging(shared_config.config['name'])
+    plot_ac_lagging(shared_config.config['name'])

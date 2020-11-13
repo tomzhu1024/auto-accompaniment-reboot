@@ -5,6 +5,7 @@ import pretty_midi
 import statsmodels.api as sm
 
 import audio_io
+import shared_config
 import shared_utils
 import udp_pipe
 
@@ -37,6 +38,7 @@ class AutoAccompaniment:
             self._dump_dir = config['name']
             self._d_progress_time = []
             self._d_progress_pos = []
+            self._d_progress_report = []
 
     def loop(self):
         print('Waiting for start signal...')
@@ -80,6 +82,7 @@ class AutoAccompaniment:
             # dump progress
             np.save('output/%s/ac_progress_time.npy' % self._dump_dir, self._d_progress_time)
             np.save('output/%s/ac_progress_pos.npy' % self._dump_dir, self._d_progress_pos)
+            np.save('output/%s/ac_progress_report.npy' % self._dump_dir, self._d_progress_report)
 
     def _proc(self, a_time, a_output):
         has_update = False
@@ -107,7 +110,7 @@ class AutoAccompaniment:
             if perf_tempo > 0:
                 current_pos = a_output.current_time * self._peer_score_tempo
                 # the reason to use max() here is that UDP does not guarantee the order of arrival of packets
-                follow_tempo = (fit_params[0] + (a_time - self._peer_start_time) * fit_params[1] + 4 - current_pos) /\
+                follow_tempo = (fit_params[0] + (a_time - self._peer_start_time) * fit_params[1] + 4 - current_pos) / \
                                (4 / perf_tempo - AutoAccompaniment.LATENCY)
                 follow_tempo = max(0, follow_tempo)  # in BPS
                 # ratio compared to original performance tempo
@@ -115,26 +118,16 @@ class AutoAccompaniment:
                 a_output.change_tempo_ratio(follow_tempo_ratio)
             else:
                 a_output.change_tempo_ratio(0)
+            if self._dump:
+                self._d_progress_report.append(1)
+        else:
+            if self._dump:
+                self._d_progress_report.append(0)
         if self._dump:
             self._d_progress_time.append(a_time)
             self._d_progress_pos.append(a_output.current_time)
 
 
 if __name__ == '__main__':
-    my_config = {
-        'name': '20201112-006',
-
-        # Output mode of accompaniment
-        #   0 - Virtual MIDI synthesizer
-        #   1 - External MIDI synthesizer
-        'acco_mode': 0,
-
-        # File path of accompaniment MIDI file
-        #   takes effect only when acco_mode is set to 0
-        'acco_midi': 'resources/midi3.mid',
-
-        # More output for debug purpose
-        'dump': True
-    }
-    app = AutoAccompaniment(my_config)
+    app = AutoAccompaniment(shared_config.config)
     app.loop()
