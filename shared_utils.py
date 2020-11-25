@@ -9,3 +9,7 @@ def check_dir(*paths):
         elif not os.path.isdir(c_path):
             return False
     return True
+
+
+def average(array):
+    return sum(array) / len(array)

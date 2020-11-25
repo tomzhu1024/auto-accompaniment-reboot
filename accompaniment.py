@@ -39,6 +39,7 @@ class AutoAccompaniment:
             self._d_progress_time = []
             self._d_progress_pos = []
             self._d_progress_report = []
+            self._d_network_cost = []
 
     def loop(self):
         print('Waiting for start signal...')
@@ -83,9 +84,13 @@ class AutoAccompaniment:
             np.save('output/%s/ac_progress_time.npy' % self._dump_dir, self._d_progress_time)
             np.save('output/%s/ac_progress_pos.npy' % self._dump_dir, self._d_progress_pos)
             np.save('output/%s/ac_progress_report.npy' % self._dump_dir, self._d_progress_report)
+            # dump network
+            np.save('output/%s/ac_network_cost.npy' % self._dump_dir, self._d_network_cost)
 
     def _proc(self, a_time, a_output):
         has_update = False
+        if self._dump:
+            network_start = time.perf_counter()
         while True:
             msg = self._msg_receiver()
             if msg is not None and msg['type'] == 'stop':
@@ -102,6 +107,8 @@ class AutoAccompaniment:
                 has_update = True
             else:
                 break
+        if self._dump:
+            self._d_network_cost.append(time.perf_counter() - network_start)
         if has_update:
             # all beats mean beats in performance score
             wls_model = sm.WLS(self._fax_pos, sm.add_constant(self._fax_time), weights=self._fax_conf)

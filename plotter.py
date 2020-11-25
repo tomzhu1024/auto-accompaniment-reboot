@@ -50,7 +50,17 @@ def plot_ac_lagging(dir_name):
     plt.show()
 
 
+def plot_ac_network_query_cost(dir_name):
+    ac_network_cost = np.load('output/%s/ac_network_cost.npy' % dir_name)
+    ac_network_cost = [i * 1000 for i in ac_network_cost]
+    plt.plot(ac_network_cost, color='orange', alpha=0.75)
+    plt.title('AC UDP Query Cost')
+    plt.ylabel('Cost (ms)')
+    plt.show()
+
+
 if __name__ == '__main__':
     plot_progress(shared_config.config['name'])
     plot_sf_lagging(shared_config.config['name'])
     plot_ac_lagging(shared_config.config['name'])
+    plot_ac_network_query_cost(shared_config.config['name'])

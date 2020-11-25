@@ -260,7 +260,7 @@ class MIDIPlayer(AudioOutput):
     @staticmethod
     def _load_midi(midi_path):
         midi_file = pretty_midi.PrettyMIDI(midi_path)
-        bpm = midi_file.get_tempo_changes()[1][0]
+        bpm = shared_utils.average(midi_file.get_tempo_changes()[1])
         bps = bpm / 60
         events = []
         for note in midi_file.instruments[0].notes:

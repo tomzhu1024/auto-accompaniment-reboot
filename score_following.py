@@ -73,7 +73,7 @@ class ScoreFollower:
     def _load_score(midi_path, resolution):
         midi_file = pretty_midi.PrettyMIDI(midi_path)
         instrument = midi_file.instruments[0]
-        score_tempo = midi_file.get_tempo_changes()[1][0]
+        score_tempo = shared_utils.average(midi_file.get_tempo_changes()[1])
 
         sax_length = int(math.ceil(max([note.end for note in instrument.notes]) / resolution)) + 1  # include 0
         sax_time = np.arange(0, sax_length * resolution, resolution)
@@ -306,6 +306,7 @@ class ScoreFollower:
                         * math.pow(ScoreFollower._similarity(audio_onset, onset_axis[i]), w[1]),
                         w[2]
                     )
+        f_v_given_i = ScoreFollower._normalize(f_v_given_i)
         return f_v_given_i
 
     @staticmethod
