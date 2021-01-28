@@ -60,7 +60,8 @@ def plot_ac_network_query_cost(dir_name):
 
 
 if __name__ == '__main__':
-    plot_progress(shared_config.config['name'])
-    plot_sf_lagging(shared_config.config['name'])
-    plot_ac_lagging(shared_config.config['name'])
-    plot_ac_network_query_cost(shared_config.config['name'])
+    name = 'unnamed_run'
+    plot_progress(name)
+    plot_sf_lagging(name)
+    plot_ac_lagging(name)
+    plot_ac_network_query_cost(name)
