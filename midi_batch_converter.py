@@ -1,5 +1,7 @@
 import os
+
 import pretty_midi
+
 import shared_utils
 
 SRC_PATH = 'resources/pop909_complex'
