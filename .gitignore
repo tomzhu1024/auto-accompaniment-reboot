@@ -3,5 +3,4 @@
 /bin
 /output
 /resources
-debug.log
-.ipynb_checkpoints
+/playground/.ipynb_checkpoints
