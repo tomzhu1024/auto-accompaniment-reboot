@@ -26,7 +26,7 @@ config = {
     # Output mode of accompaniment
     #   0 - Virtual MIDI synthesizer
     #   1 - External MIDI synthesizer
-    'acco_mode': 0,
+    'acco_mode': 1,
 
     # File path of accompaniment MIDI file
     #   takes effect only when acco_mode is set to 0

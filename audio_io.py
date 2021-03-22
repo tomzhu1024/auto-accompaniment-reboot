@@ -196,10 +196,18 @@ class VirtualSynthesizer(MIDISynthesizer):
 
 
 class ExternalSynthesizer(MIDISynthesizer):
-    PORT_ID = 2
+    # PORT_ID = 2 # for windows
+    # PORT_ID = 0 # for mac
 
     def __init__(self):
         import rtmidi
+
+        # decide PORT_ID based on system
+        pf = platform.platform()
+        if pf.startswith('Windows'):
+            PORT_ID = 2
+        elif pf.startswith('Darwin'):
+            PORT_ID = 0
 
         self._midi_port = rtmidi.MidiOut()
         available_ports = self._midi_port.get_ports()
