@@ -5,7 +5,7 @@ import pretty_midi
 import statsmodels.api as sm
 
 import audio_io
-import shared_config
+import global_config
 import shared_utils
 import udp_pipe
 
@@ -27,7 +27,7 @@ class AutoAccompaniment:
         if config['acco_mode'] == 0:
             self._player = audio_io.MIDIPlayer(self._midi_path, audio_io.VirtualSynthesizer())
         elif config['acco_mode'] == 1:
-            self._player = audio_io.MIDIPlayer(self._midi_path, audio_io.ExternalSynthesizer())
+            self._player = audio_io.MIDIPlayer(self._midi_path, audio_io.ExternalSynthesizer(config))
         else:
             raise Exception('unsupported accompaniment mode')
         self._player.connect_to_proc(self._proc)
@@ -89,6 +89,7 @@ class AutoAccompaniment:
 
     def _proc(self, a_time, a_output):
         has_update = False
+        network_start = None
         if self._dump:
             network_start = time.perf_counter()
         while True:
@@ -123,8 +124,14 @@ class AutoAccompaniment:
                 # ratio compared to original performance tempo
                 follow_tempo_ratio = follow_tempo / self._peer_score_tempo
                 a_output.change_tempo_ratio(follow_tempo_ratio)
+
+                # DEBUG PRINT
+                print('[T*] Tempo Ratio Updated: %.4f' % follow_tempo_ratio)
             else:
                 a_output.change_tempo_ratio(0)
+
+                # DEBUG PRINT
+                print('[T-] Tempo Ratio Suppressed: 0')
             if self._dump:
                 self._d_progress_report.append(1)
         else:
@@ -136,5 +143,5 @@ class AutoAccompaniment:
 
 
 if __name__ == '__main__':
-    app = AutoAccompaniment(shared_config.config)
+    app = AutoAccompaniment(global_config.config)
     app.loop()

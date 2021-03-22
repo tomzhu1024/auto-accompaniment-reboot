@@ -2,7 +2,6 @@ import aubio
 import numpy as np
 
 
-# TODO: rewrite this to better model
 class PitchProcessorCore:
     NO_PITCH = -1.0
     DEPTH = 2

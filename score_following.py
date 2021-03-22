@@ -5,7 +5,7 @@ import numpy as np
 import pretty_midi
 
 import audio_io
-import shared_config
+import global_config
 import shared_utils
 import signal_processing
 import udp_pipe
@@ -14,7 +14,8 @@ import udp_pipe
 class ScoreFollower:
     # sax means Score AXis
     # a means Audio
-    RESOLUTION = 0.01
+    SUPER_SAMPLING_FACTOR = 2
+    RESOLUTION = 1024 / 44100 / SUPER_SAMPLING_FACTOR
 
     def __init__(self, config):
         self._midi_path = config['score_midi']
@@ -175,6 +176,7 @@ class ScoreFollower:
         self._cur_pos = np.argmax(self._f_source)
 
         if self._dump:
+            # TODO: change dump size according to SUPER_SAMPLING_FACTOR
             if self._no_move:
                 self._d_snapshot_ij.append(np.zeros(100))
             else:
@@ -251,25 +253,29 @@ class ScoreFollower:
                 self._d_midi_pos += 1
             self._d_time_cost.append(time.perf_counter() - self._perf_start)
 
+            # DEBUG PRINT
+            print("pitch: %.4f" % a_pitch,
+                  "\t pos: %.4f" % self._sax_time[self._cur_pos],
+                  "\t no_move:", self._no_move,
+                  "\t compute_cost: %.4f" % self._d_time_cost[-1],
+                  "\t rate_ratio: %.4f" % (self._estimated_tempo / self._score_tempo))
+
     @staticmethod
     def _compute_f_i_j_given_d(time_axis, d, score_tempo, estimated_tempo):
-        rate_ratio = estimated_tempo / score_tempo if estimated_tempo > 0 else score_tempo / 1e-5
+        rate_ratio = score_tempo / estimated_tempo if estimated_tempo > 0 else score_tempo / 1e-5
         sigma_square = math.log(1 / (10 * d) + 1)
         sigma = math.sqrt(sigma_square)
-        a = np.true_divide(1, np.multiply(time_axis, sigma * math.sqrt(2 * math.pi)), where=time_axis != 0)
-        b = np.add(np.log(time_axis, where=time_axis != 0), 0.5 * sigma_square - math.log(rate_ratio * d))
-        b = np.exp(np.true_divide(-np.square(b), 2 * sigma_square))
-        f_i_j_given_d = np.multiply(a, b)
-        # remove the possible np.nan element in the beginning, otherwise normalization will fail
-        f_i_j_given_d[time_axis == 0] = 0
-        f_i_j_given_d = ScoreFollower._normalize(f_i_j_given_d)
+        mu = math.log(d / rate_ratio) - sigma_square / 2
+        f_i_j_given_d = 1 / time_axis * sigma * math.sqrt(2 * math.pi) * np.exp(
+            - ((np.log(time_axis) - mu) ** 2 / (2 * sigma ** 2)))
+        f_i_j_given_d[0] = 0
         return f_i_j_given_d
 
     @staticmethod
     def _compute_f_i_given_d(f_source, f_i_j_given_d, cur_pos, axis_length):
         # avoid overflow
-        left = max(0, cur_pos - 1000)
-        right = min(cur_pos + 1000, axis_length)
+        left = max(0, cur_pos - 1000 * ScoreFollower.SUPER_SAMPLING_FACTOR)
+        right = min(cur_pos + 1000 * ScoreFollower.SUPER_SAMPLING_FACTOR, axis_length)
         f_i_given_d = np.zeros(axis_length)
         f_source_w = f_source[left:right]
         f_i_j_given_d_w = f_i_j_given_d[:right - left]
@@ -279,12 +285,11 @@ class ScoreFollower:
         f_i_given_d = ScoreFollower._normalize(f_i_given_d)
         return f_i_given_d
 
-    # TODO: rewrite this to better model
     @staticmethod
     def _compute_f_v_given_i(pitch_axis, onset_axis, cur_pos, axis_length, audio_pitch, audio_onset, pitch_proc, w):
         f_v_given_i = np.zeros(axis_length)
-        left = max(0, cur_pos - 200)
-        right = min(cur_pos + 200, axis_length)
+        left = max(0, cur_pos - 200 * ScoreFollower.SUPER_SAMPLING_FACTOR)
+        right = min(cur_pos + 200 * ScoreFollower.SUPER_SAMPLING_FACTOR, axis_length)
         for i in range(left, right):
             if audio_pitch == signal_processing.PitchProcessorCore.NO_PITCH:
                 # performance side makes no sound
@@ -338,5 +343,5 @@ class ScoreFollower:
 
 
 if __name__ == '__main__':
-    app = ScoreFollower(shared_config.config)
+    app = ScoreFollower(global_config.config)
     app.loop()

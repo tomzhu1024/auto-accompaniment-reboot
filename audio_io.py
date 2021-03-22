@@ -111,7 +111,7 @@ class MicrophoneInput(AudioInput):
         self._chunk_dur = self._chunk / self._samp_rate
 
         self._audio = pyaudio.PyAudio()
-        self._stream = self._audio.open(format=pyaudio.paInt16,
+        self._stream = self._audio.open(format=pyaudio.paFloat32,
                                         channels=1,
                                         rate=self._samp_rate,
                                         input=True,
@@ -133,8 +133,7 @@ class MicrophoneInput(AudioInput):
                     self._prev_time = read_time - self._chunk_dur
                 if self._dump:
                     self._dump_data.append(bytes_read)
-                data = np.frombuffer(bytes_read, dtype=np.int16)
-                data = np.true_divide(data, 2 ** 15, dtype=np.float32)
+                data = np.frombuffer(bytes_read, dtype=np.float32)
                 executor.submit(self._proc, read_time, self._prev_time, data, self)  # process async
                 self._prev_time = read_time
 
@@ -196,19 +195,22 @@ class VirtualSynthesizer(MIDISynthesizer):
 
 
 class ExternalSynthesizer(MIDISynthesizer):
-    PORT_ID = 2
-
-    def __init__(self):
+    def __init__(self, config):
         import rtmidi
 
         self._midi_port = rtmidi.MidiOut()
         available_ports = self._midi_port.get_ports()
         print('Available ports:', available_ports)
-        print('Using port:', available_ports[ExternalSynthesizer.PORT_ID])
-        if available_ports:
-            self._midi_port.open_port(ExternalSynthesizer.PORT_ID)
+
+        port_index = -1
+        for i in range(len(available_ports)):
+            if available_ports[i].startswith(config['acco_device']):
+                port_index = i
+        if available_ports and port_index != -1:
+            self._midi_port.open_port(port_index)
+            print('Opened port:', available_ports[port_index])
         else:
-            raise Exception('no available port')
+            raise Exception('could not find port: %s' % config['acco_device'])
 
     def note_on(self, pitch, velocity):
         self._midi_port.send_message([0x90, pitch, velocity])

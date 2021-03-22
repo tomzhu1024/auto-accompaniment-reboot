@@ -1,7 +1,7 @@
 import matplotlib.pyplot as plt
 import numpy as np
 
-import shared_config
+import global_config
 
 
 def plot_progress(dir_name):
@@ -59,9 +59,31 @@ def plot_ac_network_query_cost(dir_name):
     plt.show()
 
 
+def plot_sf_probabilities(dir_name):
+    ij = np.load('output/%s/sf_snapshot_ij.npy' % dir_name)
+    i = np.load('output/%s/sf_snapshot_i.npy' % dir_name)
+    v = np.load('output/%s/sf_snapshot_v.npy' % dir_name)
+    posterior = np.load('output/%s/sf_snapshot_posterior.npy' % dir_name)
+    for index in range(1000, ij.shape[0]):
+        ax = plt.subplot(4, 1, 1)
+        plt.plot(ij[index])
+        plt.subplot(4, 1, 2, sharex=ax)
+        plt.plot(i[index])
+        plt.title('SoftMax: %d' % np.argmax(i[index]))
+        plt.subplot(4, 1, 3, sharex=ax)
+        plt.plot(v[index])
+        plt.title('Audio: %.4f' % ((index + 1) * 1024 / 44100))
+        plt.subplot(4, 1, 4, sharex=ax)
+        plt.plot(posterior[index])
+        plt.title('SoftMax: %d' % np.argmax(posterior[index]))
+        plt.tight_layout()
+        plt.show()
+
+
 if __name__ == '__main__':
-    name = 'unnamed_run'
-    plot_progress(name)
-    plot_sf_lagging(name)
-    plot_ac_lagging(name)
-    plot_ac_network_query_cost(name)
+    name = global_config.config['name_plotter']
+    # plot_progress(name)
+    # plot_sf_lagging(name)
+    # plot_ac_lagging(name)
+    # plot_ac_network_query_cost(name)
+    plot_sf_probabilities(name)

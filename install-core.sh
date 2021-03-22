@@ -1,6 +1,6 @@
 pip install pretty_midi
 pip install python-rtmidi
-pip install -e git://github.com/nwhitehead/pyfluidsynth.git#egg=pyFluidSynth
+pip install git+https://github.com/nwhitehead/pyfluidsynth.git
 conda install -c anaconda numpy -y
 conda install -c anaconda statsmodels -y
 conda install -c anaconda pyaudio -y
