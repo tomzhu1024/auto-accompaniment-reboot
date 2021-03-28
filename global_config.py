@@ -1,5 +1,5 @@
 config = {
-    'name': 'trivial-000',
+    'name': 'expectationtest-001',
     'name_plotter': 'newmodeltest-000',
 
     # Input mode of performance
@@ -16,7 +16,7 @@ config = {
     'perf_sr': 44100,
 
     # Number of samples processed in each iteration
-    'perf_chunk': 1024,
+    'perf_chunk': 2048,
 
     # File path of score MIDI file (score)
     'score_midi': 'resources/pop909_melody/017.mid',
@@ -24,7 +24,7 @@ config = {
     # Output mode of accompaniment
     #   0 - Virtual MIDI synthesizer
     #   1 - External MIDI synthesizer
-    'acco_mode': 1,
+    'acco_mode': 0,
 
     # Name of External MIDI Device
     #   takes effect only when acco_mode is set to 1
@@ -37,5 +37,5 @@ config = {
     'dump': True,
 
     # Stop earlier than the score ends, set to non-positive to disable
-    'trunc_time': 10
+    'trunc_time': 0
 }

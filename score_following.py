@@ -14,8 +14,8 @@ import udp_pipe
 class ScoreFollower:
     # sax means Score AXis
     # a means Audio
-    SUPER_SAMPLING_FACTOR = 2
-    RESOLUTION = 1024 / 44100 / SUPER_SAMPLING_FACTOR
+    SUPER_SAMPLING_FACTOR = 4
+    RESOLUTION = 2048 / 44100 / SUPER_SAMPLING_FACTOR
 
     def __init__(self, config):
         self._midi_path = config['score_midi']
@@ -31,6 +31,7 @@ class ScoreFollower:
         self._prev_tempo_time = 0
         self._first_run = True
         self._no_move = False
+        self._f_x_axis = np.arange(self._sax_length)
 
         self._tempo_ub = 1.3 * self._score_tempo
         self._tempo_lb = 0.7 * self._score_tempo
@@ -39,6 +40,7 @@ class ScoreFollower:
             self._audio_input = audio_io.WaveFileInput(config)
         elif config['perf_mode'] == 1:
             self._audio_input = audio_io.MicrophoneInput(config)
+        self._audio_interval = config['perf_chunk'] / config['perf_sr']
         self._audio_input.connect_to_proc(self._proc)
         self._pitch_proc = signal_processing.PitchProcessor(config)
         self._onset_proc = signal_processing.OnsetProcessor(config)
@@ -69,6 +71,11 @@ class ScoreFollower:
             self._perf_start = 0
             # truncating time
             self._trunc_time = config['trunc_time']
+
+        # DEBUG PRINT
+        print("Score Following Module initialized. Profile Name: %s. Audio Interval: %.4f." % (
+            config['name'], self._audio_interval
+        ))
 
     @staticmethod
     def _load_score(midi_path, resolution):
@@ -156,8 +163,10 @@ class ScoreFollower:
                                                              f_i_j_given_d=f_i_j_given_d,
                                                              cur_pos=self._cur_pos,
                                                              axis_length=self._sax_length)
+            f_i_given_d = ScoreFollower._normalize(f_i_given_d)
         # update position
-        self._cur_pos = np.argmax(f_i_given_d)
+        # self._cur_pos = np.argmax(f_i_given_d)
+        self._cur_pos = round(np.dot(self._f_x_axis, f_i_given_d))
 
         # observation
         f_v_given_i = ScoreFollower._compute_f_v_given_i(pitch_axis=self._sax_pitch,
@@ -168,12 +177,15 @@ class ScoreFollower:
                                                          audio_onset=a_onset,
                                                          pitch_proc=self._pitch_proc,
                                                          w=w)
+        f_v_given_i = ScoreFollower._normalize(f_v_given_i)
         # posterior
         self._f_source = f_i_given_d * f_v_given_i
-        self._f_source = ScoreFollower._gate_mask(self._f_source, center=self._cur_pos, half_size=50)
+        self._f_source = ScoreFollower._gate_mask(self._f_source, center=self._cur_pos,
+                                                  half_size=50 * self.SUPER_SAMPLING_FACTOR)
         self._f_source = ScoreFollower._normalize(self._f_source)
         # update position again
-        self._cur_pos = np.argmax(self._f_source)
+        # self._cur_pos = np.argmax(self._f_source)
+        self._cur_pos = round(np.dot(self._f_x_axis, self._f_source))
 
         if self._dump:
             # TODO: change dump size according to SUPER_SAMPLING_FACTOR
@@ -254,11 +266,14 @@ class ScoreFollower:
             self._d_time_cost.append(time.perf_counter() - self._perf_start)
 
             # DEBUG PRINT
-            print("pitch: %.4f" % a_pitch,
-                  "\t pos: %.4f" % self._sax_time[self._cur_pos],
-                  "\t no_move:", self._no_move,
-                  "\t compute_cost: %.4f" % self._d_time_cost[-1],
-                  "\t rate_ratio: %.4f" % (self._estimated_tempo / self._score_tempo))
+            print('Pitch= {:>6}\tOnset= {:<3}\tPos= {:>8}\tBlocked= {:<3}\tCost= {:>7}\tRatio= {:>5}'.format(
+                '%.3f' % a_pitch,
+                '|==' if a_onset else '|',
+                '%.3f' % self._sax_time[self._cur_pos],
+                '|==' if self._no_move else '|',
+                '%.2f%%' % (self._d_time_cost[-1] / self._audio_interval * 100),
+                '%.3f' % (self._estimated_tempo / self._score_tempo)
+            ))
 
     @staticmethod
     def _compute_f_i_j_given_d(time_axis, d, score_tempo, estimated_tempo):
@@ -266,8 +281,8 @@ class ScoreFollower:
         sigma_square = math.log(1 / (10 * d) + 1)
         sigma = math.sqrt(sigma_square)
         mu = math.log(d / rate_ratio) - sigma_square / 2
-        f_i_j_given_d = 1 / time_axis * sigma * math.sqrt(2 * math.pi) * np.exp(
-            - ((np.log(time_axis) - mu) ** 2 / (2 * sigma ** 2)))
+        f_i_j_given_d = np.true_divide(1, time_axis, where=time_axis != 0) * sigma * math.sqrt(2 * math.pi) * np.exp(
+            - ((np.log(time_axis, where=time_axis != 0) - mu) ** 2 / (2 * sigma ** 2)))
         f_i_j_given_d[0] = 0
         return f_i_j_given_d
 
@@ -282,7 +297,6 @@ class ScoreFollower:
         f_i_given_d_w = np.convolve(f_source_w, f_i_j_given_d_w)
         f_i_given_d_w = f_i_given_d_w[:right - left]  # slice to window size
         f_i_given_d[left:right] = f_i_given_d_w
-        f_i_given_d = ScoreFollower._normalize(f_i_given_d)
         return f_i_given_d
 
     @staticmethod
@@ -311,7 +325,6 @@ class ScoreFollower:
                         * math.pow(ScoreFollower._similarity(audio_onset, onset_axis[i]), w[1]),
                         w[2]
                     )
-        f_v_given_i = ScoreFollower._normalize(f_v_given_i)
         return f_v_given_i
 
     @staticmethod
