@@ -37,5 +37,5 @@ config = {
     'dump': True,
 
     # Stop earlier than the score ends, set to non-positive to disable
-    'trunc_time': 0
+    'trunc_time': 20
 }

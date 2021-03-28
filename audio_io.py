@@ -111,7 +111,7 @@ class MicrophoneInput(AudioInput):
         self._chunk_dur = self._chunk / self._samp_rate
 
         self._audio = pyaudio.PyAudio()
-        self._stream = self._audio.open(format=pyaudio.paFloat32,
+        self._stream = self._audio.open(format=pyaudio.paInt16,
                                         channels=1,
                                         rate=self._samp_rate,
                                         input=True,
@@ -133,7 +133,8 @@ class MicrophoneInput(AudioInput):
                     self._prev_time = read_time - self._chunk_dur
                 if self._dump:
                     self._dump_data.append(bytes_read)
-                data = np.frombuffer(bytes_read, dtype=np.float32)
+                data = np.frombuffer(bytes_read, dtype=np.int16)
+                data = np.true_divide(data, 2 ** 15, dtype=np.float32)
                 executor.submit(self._proc, read_time, self._prev_time, data, self)  # process async
                 self._prev_time = read_time
 
