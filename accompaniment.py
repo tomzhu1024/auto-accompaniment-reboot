@@ -13,8 +13,8 @@ import udp_pipe
 class AutoAccompaniment:
     # fax means score Following AXis
     # a means Audio
-    DEPTH = 5
-    LATENCY = 0.02
+    DEPTH = 4
+    LATENCY = 0.01
 
     def __init__(self, config):
         self._midi_path = config['acco_midi']

@@ -86,7 +86,7 @@ class OnsetProcessor:
         self._chunk = config['perf_chunk']
         self._samp_rate = config['perf_sr']
 
-        self._onset_detector = aubio.onset('default', self._chunk, self._chunk, self._samp_rate)
+        self._onset_detector = aubio.onset('wphase', self._chunk, self._chunk, self._samp_rate)
 
         self._result = False  # use boolean to represent onset
 

@@ -80,12 +80,14 @@ class WaveFileInput(AudioInput):
                 # pass audio data to processor after playback finishes
                 future = executor.submit(self._stream.write, bytes_read)  # play async
                 future.result()  # wait for play end
-                read_time = time.time()  # as accurate as possible, record time right after finishing reading
                 if self._first_run:
                     self._first_run = False
                     # only execute in the first time
+                    read_time = time.time()
                     self._start_time = read_time - self._chunk_dur
                     self._prev_time = read_time - self._chunk_dur
+                else:
+                    read_time = self._prev_time + self._chunk_dur
                 data = np.frombuffer(bytes_read, dtype=self._dtype)
                 if len(data) != self._chunk:
                     # reaches file end, or remaining samples are insufficient to composite one chunk
@@ -125,12 +127,14 @@ class MicrophoneInput(AudioInput):
         with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
             while self._running:
                 bytes_read = self._stream.read(self._chunk)
-                read_time = time.time()  # as accurate as possible, record time right after finishing reading
                 if self._first_run:
                     self._first_run = False
                     # only execute in the first time
+                    read_time = time.time()
                     self._start_time = read_time - self._chunk_dur
                     self._prev_time = read_time - self._chunk_dur
+                else:
+                    read_time = self._prev_time + self._chunk_dur
                 if self._dump:
                     self._dump_data.append(bytes_read)
                 data = np.frombuffer(bytes_read, dtype=np.int16)

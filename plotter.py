@@ -1,8 +1,6 @@
 import matplotlib.pyplot as plt
 import numpy as np
 
-import global_config
-
 
 def plot_progress(dir_name):
     sf_progress_time = np.load('output/%s/sf_progress_time.npy' % dir_name)
@@ -81,9 +79,9 @@ def plot_sf_probabilities(dir_name):
 
 
 if __name__ == '__main__':
-    name = global_config.config['name_plotter']
-    # plot_progress(name)
-    # plot_sf_lagging(name)
-    # plot_ac_lagging(name)
-    # plot_ac_network_query_cost(name)
+    name = 'expectationtest-005'
+    plot_progress(name)
+    plot_sf_lagging(name)
+    plot_ac_lagging(name)
+    plot_ac_network_query_cost(name)
     plot_sf_probabilities(name)
