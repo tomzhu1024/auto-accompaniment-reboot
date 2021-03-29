@@ -14,7 +14,7 @@ class AutoAccompaniment:
     # fax means score Following AXis
     # a means Audio
     DEPTH = 4
-    LATENCY = 0.01
+    LATENCY = 0
 
     def __init__(self, config):
         self._midi_path = config['acco_midi']
@@ -42,7 +42,7 @@ class AutoAccompaniment:
             self._d_network_cost = []
 
     def loop(self):
-        print('Waiting for start signal...')
+        print('Accompanying Module is ready. Waiting for start signal...')
         # wait for start message
         while True:
             msg = self._msg_receiver()
