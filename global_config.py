@@ -1,5 +1,5 @@
 config = {
-    'name': 'expectationtest-006',
+    'name': 'test-001',
 
     # Input mode of performance
     #   0 - wave file
@@ -8,7 +8,7 @@ config = {
 
     # File path of performance wave file
     #   takes effects only when perf_mode is set to 0
-    'perf_audio': 'output/expectationtest-005/audio_mic.wav',
+    'perf_audio': 'output/test-002/audio_mic.wav',
 
     # Sample rate of performance input
     #   takes effects only when perf_mode is set to 1
@@ -30,11 +30,11 @@ config = {
     'acco_device': 'CASIO USB-MIDI',
 
     # File path of accompaniment MIDI file
-    'acco_midi': 'resources/pop909_acco/019.mid',
+    'acco_midi': 'resources/pop909_melody/019.mid',
 
     # More output for debug purpose
     'dump': True,
 
     # Stop earlier than the score ends, set to non-positive to disable
-    'trunc_time': 70
+    'trunc_time': 120
 }

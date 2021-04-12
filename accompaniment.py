@@ -105,7 +105,17 @@ class AutoAccompaniment:
                 self._fax_pos[0] = msg['pos']
                 self._fax_conf = np.roll(self._fax_conf, 1)
                 self._fax_conf[0] = msg['conf']
-                has_update = True
+                has_update = True                                
+                beat_mark = True # adjust conf according to fax_pos
+                if beat_mark == True:
+                    if int(self._fax_pos[0]*100) % 400 <= 10 or int(self._fax_pos[0]*100) % 400 >= 390:
+                        print("before boosting",self._fax_pos,self._fax_conf)
+                        self._fax_conf[0] = self._fax_conf[0] * 100
+                        print("after boosting",self._fax_pos,self._fax_conf)
+                    elif int(self._fax_pos[0]*100) % 200 <= 10 or int(self._fax_pos[0]*100) % 200 >= 190:
+                        print("before boosting",self._fax_pos,self._fax_conf)
+                        self._fax_conf[0] = self._fax_conf[0] * 50
+                        print("after boosting",self._fax_pos,self._fax_conf)
             else:
                 break
         if self._dump:
@@ -122,7 +132,21 @@ class AutoAccompaniment:
                                (4 / perf_tempo - AutoAccompaniment.LATENCY)
                 follow_tempo = max(0, follow_tempo)  # in BPS
                 # ratio compared to original performance tempo
-                follow_tempo_ratio = follow_tempo / self._peer_score_tempo
+                # follow_tempo_ratio = follow_tempo / self._peer_score_tempo
+                ratio_change_rate = 0.5
+                try:
+                    follow_tempo_ratio = (1-ratio_change_rate)* follow_tempo_ratio + \
+                    ratio_change_rate*(follow_tempo / self._peer_score_tempo)
+                except:
+                    follow_tempo_ratio = follow_tempo / self._peer_score_tempo
+
+                # hard bound
+                # up down ratio
+                up_ratio = 1.3
+                down_ratio = 0.7
+                follow_tempo_ratio = follow_tempo / self._peer_score_tempo                
+                follow_tempo_ratio = min(follow_tempo_ratio,up_ratio)
+                follow_tempo_ratio = max(follow_tempo_ratio,down_ratio)
                 a_output.change_tempo_ratio(follow_tempo_ratio)
 
                 # DEBUG PRINT

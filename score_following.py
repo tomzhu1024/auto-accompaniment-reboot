@@ -17,7 +17,7 @@ class ScoreFollower:
     # sax means Score AXis
     # a means Audio
     SUPER_SAMPLING_FACTOR = 5
-    RATIO_CHANGE_LEARNING_RATE = 0.2
+    RATIO_CHANGE_LEARNING_RATE = 0.5
 
     def __init__(self, config):
         self._audio_interval = config['perf_chunk'] / config['perf_sr']
@@ -39,6 +39,8 @@ class ScoreFollower:
 
         self._tempo_ub = 1.3 * self._score_tempo
         self._tempo_lb = 0.7 * self._score_tempo
+        self.beat_count = 0
+        self.beat_count2 = 0
 
         if config['perf_mode'] == 0:
             self._audio_input = audio_io.WaveFileInput(config)
@@ -106,8 +108,8 @@ class ScoreFollower:
             start = int(math.ceil(note.start / resolution))
             end = int(math.ceil(note.end / resolution)) + 1  # end will never go out of range
             # truncate of note is too long
-            if end - start > int(1 / resolution):
-                end = start + int(1 / resolution)
+            if end - start > int(2 / resolution):
+                end = start + int(2 / resolution)
             pitches[start: end] = note.pitch
             sax_onset[start] = 1
         score_pitch_proc = signal_processing.PitchProcessorCore()
@@ -180,7 +182,6 @@ class ScoreFollower:
             f_i_given_d = ScoreFollower._normalize(f_i_given_d)
         # update position
         self._cur_pos = round(np.dot(self._f_x_axis, f_i_given_d))
-
         # observation
         f_v_given_i = ScoreFollower._compute_f_v_given_i(pitch_axis=self._sax_pitch,
                                                          onset_axis=self._sax_onset,
@@ -197,7 +198,6 @@ class ScoreFollower:
         self._f_source = ScoreFollower._normalize(self._f_source)
         # update position again
         self._cur_pos = round(np.dot(self._f_x_axis, self._f_source))
-
         if self._dump:
             # TODO: change dump size according to SUPER_SAMPLING_FACTOR
             if self._no_move:
@@ -237,7 +237,9 @@ class ScoreFollower:
 
         # periodically housekeeping tasks
         # report information to accompaniment module
-        if a_time - self._prev_report_time > 1:
+        # if a_time - self._prev_report_time > 1:
+        if self._cur_pos > self.beat_count2:
+            self.beat_count2 += 100
             # timestamp, position in beat, confidence
             self._msg_sender({
                 'type': 'update',
@@ -253,7 +255,9 @@ class ScoreFollower:
             if self._dump:
                 self._d_progress_report.append(0)
         # re-estimate tempo
-        if (self._cur_pos - self._prev_tempo_pos) / 100 > 60 / self._estimated_tempo * 2:
+        if self._cur_pos > self.beat_count:
+            self.beat_count += 200
+        # if (self._cur_pos - self._prev_tempo_pos) / 100 > 60 / self._estimated_tempo * 2:
             estimated_tempo = self._estimate_tempo(score_tempo=self._score_tempo,
                                                    delta_pos=self._cur_pos - self._prev_tempo_pos,
                                                    delta_time=a_time - self._prev_tempo_time)
