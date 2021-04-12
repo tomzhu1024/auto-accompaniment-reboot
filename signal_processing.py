@@ -4,8 +4,8 @@ import numpy as np
 
 class PitchProcessorCore:
     NO_PITCH = -1.0
-    DEPTH = 2
-    WEIGHT = (0.25, 0.25)
+    DEPTH = 1
+    WEIGHT = 0.5
 
     def __init__(self):
         self._edge = 0.5
