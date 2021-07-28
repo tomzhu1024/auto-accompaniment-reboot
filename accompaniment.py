@@ -4,10 +4,8 @@ import numpy as np
 import pretty_midi
 import statsmodels.api as sm
 
-import audio_io
+from utils import audio_io, shared_utils, udp_pipe
 import global_config
-import shared_utils
-import udp_pipe
 
 
 class AutoAccompaniment:

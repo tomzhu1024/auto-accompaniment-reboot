@@ -4,7 +4,7 @@ config = {
     # Input mode of performance
     #   0 - wave file
     #   1 - microphone
-    'perf_mode': 0,
+    'perf_mode': 1,
 
     # File path of performance wave file
     #   takes effects only when perf_mode is set to 0
@@ -18,7 +18,7 @@ config = {
     'perf_chunk': 2048,
 
     # File path of score MIDI file (score)
-    'score_midi': 'resources/pop909_melody/019.mid',
+    'score_midi': 'resources/pop909_melody/236.mid',
 
     # Output mode of accompaniment
     #   0 - Virtual MIDI synthesizer
@@ -30,11 +30,11 @@ config = {
     'acco_device': 'CASIO USB-MIDI',
 
     # File path of accompaniment MIDI file
-    'acco_midi': 'resources/pop909_acco/019.mid',
+    'acco_midi': 'resources/pop909_acco/236.mid',
 
     # More output for debug purpose
     'dump': True,
 
     # Stop earlier than the score ends, set to non-positive to disable
-    'trunc_time': 70
+    'trunc_time': 0
 }

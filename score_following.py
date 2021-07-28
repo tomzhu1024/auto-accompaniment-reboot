@@ -6,11 +6,8 @@ import time
 import numpy as np
 import pretty_midi
 
-import audio_io
+from utils import audio_io, shared_utils, udp_pipe, signal_processing
 import global_config
-import shared_utils
-import signal_processing
-import udp_pipe
 
 
 class ScoreFollower:
