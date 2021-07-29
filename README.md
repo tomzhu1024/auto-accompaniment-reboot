@@ -8,11 +8,11 @@ Rewritten from [MichaelZhangty/Auto-Acco-2020](https://github.com/MichaelZhangty
 
 | Name | Description |
 | :--- | :--- |
-| `/bin` | Binary executables |
-| `/resources` | Static resources |
-| `/utils` | Supporting libraries |
-| `/output` | Execution results |
-| `/playground` | Experimental stuffs |
+| `bin` | Binary executables |
+| `resources` | Static resources |
+| `utils` | Supporting libraries |
+| `output` | Execution results |
+| `playground` | Experimental stuffs |
 | `global_config.py` | Global configuration file |
 | `score_following.py` | Entry of score following module |
 | `accompaniment.py` | Entry of accompaniment module |
@@ -46,3 +46,8 @@ python score_following.py
 - [ ] Merge multiple entry points
 - [ ] Replace UDP IPC pipe
 - [ ] Migrate to C++
+
+## Known Issues
+
+- `pyfluidsynth` on PyPI has some compatibility issues. Therefore, install a newer version from [GitHub](https://github.com/nwhitehead/pyfluidsynth) instead. See `playground/install_dependencies.sh` for reference.
+- Currently, `bin` folder only contains executables for Windows. For Windows users, no need to prepare any other executables. For Mac users, install `fluidsynth` on your own.

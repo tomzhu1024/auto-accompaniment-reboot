@@ -1,3 +1,8 @@
-/__pycache__
-/.idea
-/output
+# Python
+__pycache__/
+
+# IDE
+/.idea/
+
+# Project-specified
+/output/
