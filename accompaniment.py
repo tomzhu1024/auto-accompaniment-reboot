@@ -1,95 +1,131 @@
+import shutil
 import time
 
 import numpy as np
 import pretty_midi
 import statsmodels.api as sm
+from rich.live import Live
+from rich.table import Table
 
-from utils import audio_io, shared_utils, udp_pipe
 import global_config
+from utils import audio_io, shared_utils, udp_pipe
+
+
+def generate_run_info_table(params=None) -> Table:
+    table = Table()
+    table.add_column('Real Time /s')
+    table.add_column('Scr. Time /s')
+    table.add_column('Scr. Len. /s')
+    table.add_column('Comp. Tempo /bps')
+    table.add_column('Tempo Ratio')
+    if params is None:
+        table.add_row('---', '---', '---', '---', '---')
+    else:
+        real_time, score_time, score_length, computed_tempo, computed_tempo_ratio = params
+        if computed_tempo_ratio == 0:
+            computed_tempo_color = '[red]'
+        elif computed_tempo_ratio > 1:
+            computed_tempo_color = '[blue]'
+        elif computed_tempo_ratio < 1:
+            computed_tempo_color = '[yellow]'
+        else:
+            computed_tempo_color = '[white]'
+        table.add_row(f"{real_time:.3f}", f"{score_time:.3f}", f"{score_length:.3f}",
+                      f"{computed_tempo_color}{computed_tempo:.4f}",
+                      f"{computed_tempo_color}{computed_tempo_ratio:.4f}")
+    return table
 
 
 class AutoAccompaniment:
-    # fax means score Following AXis
-    # a means Audio
+    # the number of data points the model will take consideration into
     DEPTH = 4
+    # the latency caused by the audio buffer
     LATENCY = 0
 
     def __init__(self, config):
-        self._midi_path = config['acco_midi']
+        self._config = config
+        self._midi_path = self._config['acco_midi']
+        # `fax_` means `score Following AXis`
         self._fax_time = np.array([float(-x) for x in range(AutoAccompaniment.DEPTH)])
         self._fax_pos = np.array([float(-x) for x in range(AutoAccompaniment.DEPTH)])
         self._fax_conf = np.full(AutoAccompaniment.DEPTH, 0.001)
         self._peer_start_time = 0
         self._peer_score_tempo = 0  # in BPS
 
-        if config['acco_mode'] == 0:
+        if self._config['acco_mode'] == 0:
             self._player = audio_io.MIDIPlayer(self._midi_path, audio_io.VirtualSynthesizer())
-        elif config['acco_mode'] == 1:
-            self._player = audio_io.MIDIPlayer(self._midi_path, audio_io.ExternalSynthesizer(config))
+        elif self._config['acco_mode'] == 1:
+            self._player = audio_io.MIDIPlayer(self._midi_path, audio_io.ExternalSynthesizer(self._config))
         else:
             raise Exception('unsupported accompaniment mode')
         self._player.connect_to_proc(self._proc)
         self._msg_receiver = udp_pipe.UDPReceiver()
+        self._follow_tempo = 0
+        self._follow_tempo_ratio = 0
+        self._live_display = None
 
-        self._dump = config['dump']
+        self._dump = self._config['dump']
         if self._dump:
-            self._dump_dir = config['name']
-            self._d_progress_time = []
-            self._d_progress_pos = []
-            self._d_progress_report = []
-            self._d_network_cost = []
+            self._dump_dir = self._config['name']
+            self._dmp_real_time = []
+            self._dmp_play_time = []
+            self._dmp_computed_tempo = []
 
     def loop(self):
-        print('Accompanying Module is ready. Waiting for start signal...')
-        # wait for start message
+        # wait for starting signal
+        print('Module ready. Waiting for signal...')
         while True:
             msg = self._msg_receiver()
             if msg is not None and msg['type'] == 'start':
                 self._peer_start_time = msg['time']
                 self._peer_score_tempo = msg['tempo'] / 60
+                self._follow_tempo = self._peer_score_tempo
+                self._follow_tempo_ratio = 1
                 break
+            # wait an arbitrary time to avoid too much resource consumption,
+            # for simplicity, use `audio_io.MIDIPlayer.TICK_INT` here
             time.sleep(audio_io.MIDIPlayer.TICK_INT)
-        print('Playing...')
-        self._player.loop()  # blocking
-        print('Stopped')
+        with Live(generate_run_info_table(), refresh_per_second=4, transient=True) as live:
+            # share `live` within the class instance
+            self._live_display = live
+            self._player.loop()  # blocking
         # some cleaning work
         self._msg_receiver.close()
         if self._dump:
             shared_utils.check_dir('output', self._dump_dir)
-            # dump midi
+            # write accompaniment result to file
+            # calculate MIDI from recorded data points
             midi_ref = pretty_midi.PrettyMIDI(self._midi_path)
             midi_new = pretty_midi.PrettyMIDI()
             piano = pretty_midi.Instrument(program=pretty_midi.instrument_name_to_program('Cello'))
-            ax_time = [0] + [x - self._peer_start_time for x in self._d_progress_time]
-            ax_pos = [0] + [x for x in self._d_progress_pos]
-            going_notes = []
+            ax_time = [0] + [x - self._peer_start_time for x in self._dmp_real_time]
+            ax_pos = [0] + [x for x in self._dmp_play_time]
+            on_going_notes = []
             for i in range(1, len(ax_pos)):
                 for note in midi_ref.instruments[0].notes:
                     if ax_pos[i - 1] <= note.start <= ax_pos[i]:
-                        going_notes.append((ax_time[i], note.pitch, note.velocity))
+                        on_going_notes.append((ax_time[i], note.pitch, note.velocity))
                     if ax_pos[i - 1] <= note.end <= ax_pos[i]:
-                        for j in range(len(going_notes)):
-                            if going_notes[j][1] == note.pitch and going_notes[j][2] == note.velocity:
-                                piano.notes.append(pretty_midi.Note(start=going_notes[j][0],
+                        for j in range(len(on_going_notes)):
+                            if on_going_notes[j][1] == note.pitch and on_going_notes[j][2] == note.velocity:
+                                piano.notes.append(pretty_midi.Note(start=on_going_notes[j][0],
                                                                     end=ax_time[i],
-                                                                    pitch=going_notes[j][1],
-                                                                    velocity=going_notes[j][2]))
-                            del going_notes[j]
+                                                                    pitch=on_going_notes[j][1],
+                                                                    velocity=on_going_notes[j][2]))
+                            del on_going_notes[j]
                             break
             midi_new.instruments.append(piano)
-            midi_new.write('output/%s/ac_result.mid' % self._dump_dir)
-            # dump progress
-            np.save('output/%s/ac_progress_time.npy' % self._dump_dir, self._d_progress_time)
-            np.save('output/%s/ac_progress_pos.npy' % self._dump_dir, self._d_progress_pos)
-            np.save('output/%s/ac_progress_report.npy' % self._dump_dir, self._d_progress_report)
-            # dump network
-            np.save('output/%s/ac_network_cost.npy' % self._dump_dir, self._d_network_cost)
+            midi_new.write(f"output/{self._dump_dir}/ac_output.mid")
+            # copy original accompaniment MIDI file
+            shutil.copyfile(self._config['acco_midi'], f"output/{self._dump_dir}/ac_origin.mid")
+            # dump data points
+            np.save(f"output/{self._dump_dir}/ac_real_time.npy", self._dmp_real_time)
+            np.save(f"output/{self._dump_dir}/ac_play_time.npy", self._dmp_play_time)
+            np.save(f"output/{self._dump_dir}/ac_computed_tempo.npy", self._dmp_computed_tempo)
 
     def _proc(self, a_time, a_output):
+        # `a_` means `Audio`
         has_update = False
-        network_start = None
-        if self._dump:
-            network_start = time.perf_counter()
         while True:
             msg = self._msg_receiver()
             if msg is not None and msg['type'] == 'stop':
@@ -106,8 +142,6 @@ class AutoAccompaniment:
                 has_update = True
             else:
                 break
-        if self._dump:
-            self._d_network_cost.append(time.perf_counter() - network_start)
         if has_update:
             # all beats mean beats in performance score
             wls_model = sm.WLS(self._fax_pos, sm.add_constant(self._fax_time), weights=self._fax_conf)
@@ -116,28 +150,30 @@ class AutoAccompaniment:
             if perf_tempo > 0:
                 current_pos = a_output.current_time * self._peer_score_tempo
                 # the reason to use max() here is that UDP does not guarantee the order of arrival of packets
-                follow_tempo = (fit_params[0] + (a_time - self._peer_start_time) * fit_params[1] + 4 - current_pos) / \
-                               (4 / perf_tempo - AutoAccompaniment.LATENCY)
-                follow_tempo = max(0, follow_tempo)  # in BPS
+                self._follow_tempo = (fit_params[0] + (a_time - self._peer_start_time) * fit_params[1] + 4 - current_pos
+                                      ) / (4 / perf_tempo - AutoAccompaniment.LATENCY)
+                self._follow_tempo = max(0, self._follow_tempo)  # in BPS
                 # ratio compared to original performance tempo
-                follow_tempo_ratio = follow_tempo / self._peer_score_tempo
-                a_output.change_tempo_ratio(follow_tempo_ratio)
-
-                # DEBUG PRINT
-                print('[T*] Tempo Ratio Updated: %.4f' % follow_tempo_ratio)
+                self._follow_tempo_ratio = self._follow_tempo / self._peer_score_tempo
             else:
-                a_output.change_tempo_ratio(0)
-
-                # DEBUG PRINT
-                print('[T-] Tempo Ratio Suppressed: 0')
-            if self._dump:
-                self._d_progress_report.append(1)
-        else:
-            if self._dump:
-                self._d_progress_report.append(0)
+                self._follow_tempo = 0
+                self._follow_tempo_ratio = 0
+            a_output.change_tempo_ratio(self._follow_tempo_ratio)
+        # update live display
+        self._live_display.update(generate_run_info_table((a_time - self._peer_start_time,
+                                                           a_output.current_time,
+                                                           a_output.total_time,
+                                                           self._follow_tempo,
+                                                           self._follow_tempo_ratio)))
+        # dump data points
         if self._dump:
-            self._d_progress_time.append(a_time)
-            self._d_progress_pos.append(a_output.current_time)
+            self._dmp_real_time.append(a_time)
+            self._dmp_play_time.append(a_output.current_time)
+            if has_update:
+                self._dmp_computed_tempo.append(self._follow_tempo)
+            else:
+                # use `-1` to mark no incoming message
+                self._dmp_computed_tempo.append(-1)
 
 
 if __name__ == '__main__':

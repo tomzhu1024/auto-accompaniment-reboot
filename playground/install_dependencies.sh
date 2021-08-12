@@ -3,6 +3,7 @@ pip install python-rtmidi
 pip install git+https://github.com/nwhitehead/pyfluidsynth.git
 pip install jupyterlab
 pip install PyQt5
+pip install rich
 conda install -c anaconda numpy -y
 conda install -c anaconda statsmodels -y
 conda install -c anaconda pyaudio -y

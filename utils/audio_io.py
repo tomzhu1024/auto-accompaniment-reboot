@@ -8,7 +8,7 @@ import numpy as np
 import pretty_midi
 import pyaudio
 
-import shared_utils
+from . import shared_utils
 
 
 class AudioInput:
@@ -118,9 +118,7 @@ class MicrophoneInput(AudioInput):
                                         rate=self._samp_rate,
                                         input=True,
                                         frames_per_buffer=self._chunk)
-
         if self._dump:
-            self._dump_dir = config['name']
             self._dump_data = []
 
     def loop(self):
@@ -139,7 +137,7 @@ class MicrophoneInput(AudioInput):
                     self._dump_data.append(bytes_read)
                 data = np.frombuffer(bytes_read, dtype=np.int16)
                 data = np.true_divide(data, 2 ** 15, dtype=np.float32)
-                executor.submit(self._proc, read_time, self._prev_time, data, self)  # process async
+                future = executor.submit(self._proc, read_time, self._prev_time, data, self)  # process async
                 self._prev_time = read_time
 
         # some internal cleaning work
@@ -147,9 +145,9 @@ class MicrophoneInput(AudioInput):
         self._stream.close()
         self._audio.terminate()
 
+    def save_to_file(self, path):
         if self._dump:
-            shared_utils.check_dir('output', self._dump_dir)
-            wave_file = wave.open('output/%s/audio_mic.wav' % self._dump_dir, 'wb')
+            wave_file = wave.open(path, 'wb')
             wave_file.setnchannels(1)
             wave_file.setsampwidth(2)
             wave_file.setframerate(self._samp_rate)
@@ -248,6 +246,10 @@ class AudioOutput:
     def current_time(self):
         return
 
+    @property
+    def total_time(self):
+        return
+
 
 class MIDIPlayer(AudioOutput):
     TICK_INT = 0.02  # second to wait between ticks, note that time.sleep() is not accurate
@@ -277,7 +279,17 @@ class MIDIPlayer(AudioOutput):
             # but time in beat doesn't
             events.append((note.start * bps, 1, note.pitch, note.velocity))
             events.append((note.end * bps, 0, note.pitch, 0))
-        # sorted by time, when time is same, note off (0) goes first
+        # sorted by time, when time is same, note off event (the second number is 0 rather than 1) goes first
+        #
+        #   Note 1  |======|
+        #   Note 2         |====|
+        #     for example, in the above case, two notes have a same pitch, this method avoids merging two notes into one
+        #
+        #   Note 1  |===========|
+        #   Note 2      |===|
+        #   sure enough, this method still has some problems with the case above,
+        #   but we assume that one key cannot be pressed down twice without releasing it,
+        #   so such cases doesn't need to be considered
         events = sorted(events, key=lambda x: (x[0], x[1]))
         return events, bps
 
@@ -303,7 +315,8 @@ class MIDIPlayer(AudioOutput):
         # convert from second to beat
         self._cur_pos += self._cur_tempo * elapsed_time
         # execute MIDI events
-        # may be more than one event
+        # assume that all MIDI events are in order
+        # there may be more than one event to execute
         while self._event_pos < len(self._midi_events) and self._midi_events[self._event_pos][0] <= self._cur_pos:
             ev = self._midi_events[self._event_pos]
             if ev[1] == 1:
@@ -323,3 +336,7 @@ class MIDIPlayer(AudioOutput):
     @property
     def current_time(self):
         return self._cur_pos / self._midi_tempo
+
+    @property
+    def total_time(self):
+        return self._midi_events[-1][0] / self._midi_tempo
