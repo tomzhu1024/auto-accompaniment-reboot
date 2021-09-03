@@ -4,9 +4,9 @@ import pretty_midi
 
 from utils import shared_utils
 
-SRC_PATH = '../resources/pop909_complex'
-MELODY_PATH = '../resources/pop909_melody'
-ACCO_PATH = '../resources/pop909_acco'
+SRC_PATH = '../resources/pop909/pop909_original'
+MELODY_PATH = '../resources/pop909/pop909_melody'
+ACCO_PATH = '../resources/pop909/pop909_acco'
 
 
 def scan(path):

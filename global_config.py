@@ -1,5 +1,6 @@
 config = {
-    'name': 'debug',
+    # Name of the profile
+    'name': 'yqnyh',
 
     # Input mode of performance
     #   > `0` - wave file
@@ -21,7 +22,7 @@ config = {
 
     # Number of discrete points that the probability density function keeps within the duration of one audio chunk
     #   * Advanced options
-    'resolution_scalar': 4,
+    'resolution_multiple': 4,
 
     # The size of the window of the f-IJ-given-D density function
     #   * Advanced options
@@ -29,22 +30,38 @@ config = {
 
     # The size of the window of the f-V-given-D density function
     #   * Advanced options
-    'window_v': 1,
+    'window_v': 5,
 
     # The size of the gate of the posterior density function
     #   * Advanced options
     'gate_post': 5,
 
+    # The time to wait between each IPC message
+    #   * Advanced options
+    'pos_report_interval': 1,
+
+    # The beat to wait between each tempo estimation
+    #   * Advanced options
+    'tempo_estimate_interval': 2,
+
+    # The number of historical points the regression model takes consideration into
+    #   * Advanced options
+    'regression_depth': 4,
+
+    # The input latency caused by the audio buffer
+    #   * Advanced options
+    'audio_input_latency': 0,
+
     # File path of performance MIDI file
-    'score_midi': 'resources/pop909_melody/063.mid',
+    'score_midi': 'resources/pop909/pop909_melody/019.mid',
 
     # File path of accompaniment MIDI file
-    'acco_midi': 'resources/pop909_acco/063.mid',
+    'acco_midi': 'resources/pop909/pop909_acco/019.mid',
 
     # Output mode of accompaniment
     #   > `0` - Virtual MIDI synthesizer
     #   > `1` - External MIDI synthesizer
-    'acco_mode': 0,
+    'acco_mode': 1,
 
     # Name of External MIDI Device
     #   * Takes effect only when `acco_mode` is set to `1`
@@ -55,5 +72,5 @@ config = {
 
     # The time to stop before the score ends, set to `0` to disable it
     #   * Takes effect only when `dump` is set to `True`
-    'trunc_time': 90
+    'trunc_time': 120
 }

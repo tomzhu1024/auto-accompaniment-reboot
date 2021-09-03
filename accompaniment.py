@@ -4,11 +4,14 @@ import time
 import numpy as np
 import pretty_midi
 import statsmodels.api as sm
+from rich.console import Console
 from rich.live import Live
 from rich.table import Table
 
 import global_config
 from utils import audio_io, shared_utils, udp_pipe
+
+console = Console()
 
 
 def generate_run_info_table(params=None) -> Table:
@@ -37,18 +40,13 @@ def generate_run_info_table(params=None) -> Table:
 
 
 class AutoAccompaniment:
-    # the number of data points the model will take consideration into
-    DEPTH = 4
-    # the latency caused by the audio buffer
-    LATENCY = 0
-
     def __init__(self, config):
         self._config = config
         self._midi_path = self._config['acco_midi']
         # `fax_` means `score Following AXis`
-        self._fax_time = np.array([float(-x) for x in range(AutoAccompaniment.DEPTH)])
-        self._fax_pos = np.array([float(-x) for x in range(AutoAccompaniment.DEPTH)])
-        self._fax_conf = np.full(AutoAccompaniment.DEPTH, 0.001)
+        self._fax_time = np.array([float(-x) for x in range(self._config['regression_depth'])])
+        self._fax_pos = np.array([float(-x) for x in range(self._config['regression_depth'])])
+        self._fax_conf = np.full(self._config['regression_depth'], 0.001)
         self._peer_start_time = 0
         self._peer_score_tempo = 0  # in BPS
 
@@ -73,7 +71,7 @@ class AutoAccompaniment:
 
     def loop(self):
         # wait for starting signal
-        print('Module ready. Waiting for signal...')
+        console.print('[green bold]Module ready. Waiting for signal...')
         while True:
             msg = self._msg_receiver()
             if msg is not None and msg['type'] == 'start':
@@ -151,7 +149,7 @@ class AutoAccompaniment:
                 current_pos = a_output.current_time * self._peer_score_tempo
                 # the reason to use max() here is that UDP does not guarantee the order of arrival of packets
                 self._follow_tempo = (fit_params[0] + (a_time - self._peer_start_time) * fit_params[1] + 4 - current_pos
-                                      ) / (4 / perf_tempo - AutoAccompaniment.LATENCY)
+                                      ) / (4 / perf_tempo - self._config['audio_input_latency'])
                 self._follow_tempo = max(0, self._follow_tempo)  # in BPS
                 # ratio compared to original performance tempo
                 self._follow_tempo_ratio = self._follow_tempo / self._peer_score_tempo

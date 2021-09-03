@@ -5,7 +5,7 @@ import numpy as np
 class PitchProcessorCore:
     NO_PITCH = -1.0
     DEPTH = 1
-    WEIGHT = 0.5
+    WEIGHT = [0.5]
 
     def __init__(self):
         self._edge = 0.5
@@ -73,7 +73,7 @@ class PitchProcessor(PitchProcessorCore):
         # detect pitch
         pitch = self._pitch_detector(self._c_data)[0]
         # if detected pitch confidence is below threshold, 0.0 will be returned
-        # however, there are still some low-confidence data, another filtering is required
+        # moreover, there are still some low-confidence data, another filtering is required
         if 40 < pitch < 84:
             super().__call__(pitch)
         else:
@@ -86,7 +86,7 @@ class OnsetProcessor:
         self._chunk = config['perf_chunk']
         self._samp_rate = config['perf_sr']
 
-        self._onset_detector = aubio.onset('default', self._chunk, self._chunk, self._samp_rate)
+        self._onset_detector = aubio.onset('hfc', self._chunk, self._chunk, self._samp_rate)
 
         self._result = False  # use boolean to represent onset
 

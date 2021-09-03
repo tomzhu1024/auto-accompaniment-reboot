@@ -122,23 +122,23 @@ class MicrophoneInput(AudioInput):
             self._dump_data = []
 
     def loop(self):
-        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-            while self._running:
-                bytes_read = self._stream.read(self._chunk)
-                if self._first_run:
-                    self._first_run = False
-                    # only execute in the first time
-                    read_time = time.time()
-                    self._start_time = read_time - self._chunk_dur
-                    self._prev_time = read_time - self._chunk_dur
-                else:
-                    read_time = self._prev_time + self._chunk_dur
-                if self._dump:
-                    self._dump_data.append(bytes_read)
-                data = np.frombuffer(bytes_read, dtype=np.int16)
-                data = np.true_divide(data, 2 ** 15, dtype=np.float32)
-                future = executor.submit(self._proc, read_time, self._prev_time, data, self)  # process async
-                self._prev_time = read_time
+        while self._running:
+            bytes_read = self._stream.read(self._chunk)
+            if self._first_run:
+                self._first_run = False
+                # only execute in the first time
+                read_time = time.time()
+                self._start_time = read_time - self._chunk_dur
+                self._prev_time = read_time - self._chunk_dur
+            else:
+                read_time = self._prev_time + self._chunk_dur
+            if self._dump:
+                self._dump_data.append(bytes_read)
+            data = np.frombuffer(bytes_read, dtype=np.int16)
+            # sampling width in microphone input is fixed to 16bit
+            data = np.true_divide(data, 2 ** 15, dtype=np.float32)
+            self._proc(read_time, self._prev_time, data, self)  # process sync
+            self._prev_time = read_time
 
         # some internal cleaning work
         self._stream.stop_stream()
@@ -148,8 +148,8 @@ class MicrophoneInput(AudioInput):
     def save_to_file(self, path):
         if self._dump:
             wave_file = wave.open(path, 'wb')
-            wave_file.setnchannels(1)
-            wave_file.setsampwidth(2)
+            wave_file.setnchannels(1)  # mono
+            wave_file.setsampwidth(2)  # 2 bytes is 16 bits
             wave_file.setframerate(self._samp_rate)
             wave_file.writeframes(b''.join(self._dump_data))
             wave_file.close()
@@ -168,16 +168,18 @@ class MIDISynthesizer:
 
 class VirtualSynthesizer(MIDISynthesizer):
     def __init__(self):
-        base_path = os.path.dirname(os.path.abspath(__file__))
-        bin_path = os.path.join(base_path, '../bin')
-        os.environ['PATH'] = bin_path + os.pathsep + os.environ['PATH']
+        # get platform
+        pf = platform.platform()
+        if pf.startswith('Windows'):
+            # for Windows, add local binary directory to path
+            base_path = os.path.dirname(os.path.abspath(__file__))
+            bin_path = os.path.join(base_path, '../bin')
+            os.environ['PATH'] = bin_path + os.pathsep + os.environ['PATH']
 
         # https://ksvi.mff.cuni.cz/~dingle/2019/prog_1/python_music.html
         import fluidsynth
 
         self._fs = fluidsynth.Synth()
-        # automatically select driver based on platform
-        pf = platform.platform()
         if pf.startswith('Windows'):
             self._fs.start(driver='dsound')
         elif pf.startswith('Darwin'):
@@ -260,7 +262,7 @@ class MIDIPlayer(AudioOutput):
         self._midi_events, self._midi_tempo = MIDIPlayer._load_midi(midi_path)  # tempo in BPS
         self._event_pos = 0  # all MIDI events must be executed in sequence, keep track of execution position
         self._cur_pos = 0  # current position in beat, updated every tick
-        self._cur_tempo = self._midi_tempo  # current tempo in BPS, same as midi's tempo at first
+        self._cur_tempo = self._midi_tempo  # current tempo in BPS, same as MIDI's tempo at first
         self._prev_tick = 0  # time of previous tick
         self._first_run = True  # flag
 
