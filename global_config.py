@@ -40,10 +40,6 @@ config = {
     #   * Advanced options
     'pos_report_interval': 1,
 
-    # The beat to wait between each tempo estimation
-    #   * Advanced options
-    'tempo_estimate_interval': 2,
-
     # The number of historical points the regression model takes consideration into
     #   * Advanced options
     'regression_depth': 4,

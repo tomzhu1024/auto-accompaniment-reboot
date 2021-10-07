@@ -13,7 +13,6 @@ from rich.table import Table
 import global_config
 from utils import audio_io, shared_utils, udp_pipe, signal_processing
 
-
 IGNORE_OBSERVATION = False
 MOCK_RATE_RATIO = None
 
@@ -59,19 +58,19 @@ class ScoreFollower:
         # the number of data points the density functions contains within one second
         self._points_per_second = math.ceil(1 / self._resolution)
         # `sax_` means `Score AXis`
-        self._score_tempo, self._sax_time, self._sax_pitch, self._sax_onset, self._sax_length = \
-            self._load_score(self._config['score_midi'], self._resolution)
+        self._score_tempo, self._sax_time, self._sax_pitch, self._sax_onset, self._sax_length, \
+        self._tempo_estimation_pos_lst = self._load_score(self._config['score_midi'], self._resolution)
         self._f_source = np.zeros(self._sax_length)
         self._f_source[0] = 1
         self._cur_pos = 0
         self._estimated_tempo = self._score_tempo
         self._prev_report_time = 0
-        self._prev_tempo_pos = 0
-        self._prev_tempo_time = 0
         self._first_run = True
         self._no_move = False
         # use this x-axis to compute expectation
         self._f_x_axis = np.arange(self._sax_length)
+        # record the index of the list of tempo estimation position
+        self._tempo_estimation_pos_idx = 0
 
         self._tempo_ub = 1.3 * self._score_tempo
         self._tempo_lb = 0.7 * self._score_tempo
@@ -127,7 +126,7 @@ class ScoreFollower:
     def _load_score(self, midi_path, resolution):
         midi_file = pretty_midi.PrettyMIDI(midi_path)
         instrument = midi_file.instruments[0]
-        score_tempo = shared_utils.average(midi_file.get_tempo_changes()[1])
+        score_tempo = shared_utils.average(midi_file.get_tempo_changes()[1])  # BPM
 
         sax_length = math.ceil(max([note.end for note in instrument.notes]) / resolution) + 1  # include 0
         sax_time = np.arange(0, sax_length * resolution, resolution)
@@ -145,7 +144,13 @@ class ScoreFollower:
         score_pitch_proc = signal_processing.PitchProcessorCore()
         for i in range(sax_length):
             sax_pitch[i] = score_pitch_proc(pitches[i])
-        return score_tempo, sax_time, sax_pitch, sax_onset, sax_length
+
+        # generate list of time-on-score for tempo estimation
+        tempo_est_pos_lst = np.arange(60 / score_tempo, sax_length * resolution, 60 / score_tempo)
+        # convert time to index
+        tempo_est_pos_lst = [round(x / resolution) for x in tempo_est_pos_lst]
+
+        return score_tempo, sax_time, sax_pitch, sax_onset, sax_length, tempo_est_pos_lst
 
     def loop(self):
         with Live(generate_run_info_table(), refresh_per_second=4, transient=True) as live:
@@ -295,15 +300,15 @@ class ScoreFollower:
             # update dump data, use `0` to mark no reporting event
             self._dmp_report_pos.append(0)
         # re-estimate tempo
-        if (self._cur_pos - self._prev_tempo_pos) * self._resolution > \
-                60 / self._estimated_tempo * self._config['tempo_estimate_interval']:  # 60 / (beat / 60sec)
+        if self._cur_pos >= self._tempo_estimation_pos_lst[self._tempo_estimation_pos_idx]:
             self._estimated_tempo = self._estimate_tempo(score_tempo=self._score_tempo,
                                                          delta_pos=self._cur_pos - self._prev_tempo_pos,
                                                          delta_time=a_time - self._prev_tempo_time)
             self._estimated_tempo = min(self._estimated_tempo, self._tempo_ub)
             self._estimated_tempo = max(self._estimated_tempo, self._tempo_lb)
-            self._prev_tempo_pos = self._cur_pos
-            self._prev_tempo_time = a_time
+            # update `_tempo_estimation_pos_idx`
+            while self._cur_pos >= self._tempo_estimation_pos_lst[self._tempo_estimation_pos_idx]:
+                self._tempo_estimation_pos_idx += 1
             # update dump data, record estimated tempo
             if self._dump:
                 self._dmp_estimate_tempo.append(self._estimated_tempo)
@@ -385,7 +390,6 @@ class ScoreFollower:
 
         if self._dump:
             self._dmp_exec_time.append(time.time())
-
 
     def _compute_f_i_j_given_d(self, time_axis, d, score_tempo, estimated_tempo):
         rate_ratio = estimated_tempo / score_tempo if estimated_tempo > 0 else 1e-5 / score_tempo
