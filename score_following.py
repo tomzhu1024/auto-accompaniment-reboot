@@ -64,6 +64,8 @@ class ScoreFollower:
         self._f_source[0] = 1
         self._cur_pos = 0
         self._estimated_tempo = self._score_tempo
+        self._prev_tempo_pos = 0
+        self._prev_tempo_time = 0
         self._prev_report_time = 0
         self._first_run = True
         self._no_move = False
@@ -306,6 +308,8 @@ class ScoreFollower:
                                                          delta_time=a_time - self._prev_tempo_time)
             self._estimated_tempo = min(self._estimated_tempo, self._tempo_ub)
             self._estimated_tempo = max(self._estimated_tempo, self._tempo_lb)
+            self._prev_tempo_pos = self._cur_pos
+            self._prev_tempo_time = a_time
             # update `_tempo_estimation_pos_idx`
             while self._cur_pos >= self._tempo_estimation_pos_lst[self._tempo_estimation_pos_idx]:
                 self._tempo_estimation_pos_idx += 1

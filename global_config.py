@@ -52,7 +52,7 @@ config = {
     'score_midi': 'resources/pop909/pop909_melody/561.mid',
 
     # File path of accompaniment MIDI file
-    'acco_midi': 'resources/pop909/pop909_acco/561.mid',
+    'acco_midi': 'resources/pop909/pop909_melody/561.mid',
 
     # Output mode of accompaniment
     #   > `0` - Virtual MIDI synthesizer
