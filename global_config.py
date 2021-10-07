@@ -1,15 +1,15 @@
 config = {
     # Name of the profile
-    'name': 'yqnyh',
+    'name': 'mercury_diary',
 
     # Input mode of performance
     #   > `0` - wave file
     #   > `1` - microphone
-    'perf_mode': 1,
+    'perf_mode': 0,
 
     # File path of performance wave file
     #   * Takes effects only when `perf_mode` is set to `0`
-    'perf_audio': '',
+    'perf_audio': 'resources/mercury_diary_ref.wav',
 
     # Sample rate of performance input
     #   * Takes effects only when `perf_mode` is set to `1`
@@ -30,11 +30,11 @@ config = {
 
     # The size of the window of the f-V-given-D density function
     #   * Advanced options
-    'window_v': 5,
+    'window_v': 1.5,
 
     # The size of the gate of the posterior density function
     #   * Advanced options
-    'gate_post': 5,
+    'gate_post': 25,
 
     # The time to wait between each IPC message
     #   * Advanced options
@@ -53,10 +53,10 @@ config = {
     'audio_input_latency': 0,
 
     # File path of performance MIDI file
-    'score_midi': 'resources/pop909/pop909_melody/019.mid',
+    'score_midi': 'resources/pop909/pop909_melody/561.mid',
 
     # File path of accompaniment MIDI file
-    'acco_midi': 'resources/pop909/pop909_acco/019.mid',
+    'acco_midi': 'resources/pop909/pop909_acco/561.mid',
 
     # Output mode of accompaniment
     #   > `0` - Virtual MIDI synthesizer

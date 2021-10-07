@@ -3,6 +3,7 @@ import math
 import shutil
 import signal
 import sys
+import time
 
 import numpy as np
 import pretty_midi
@@ -11,6 +12,10 @@ from rich.table import Table
 
 import global_config
 from utils import audio_io, shared_utils, udp_pipe, signal_processing
+
+
+IGNORE_OBSERVATION = False
+MOCK_RATE_RATIO = None
 
 
 def generate_run_info_table(params=None) -> Table:
@@ -116,6 +121,8 @@ class ScoreFollower:
             # dump periodical housekeeping works
             self._dmp_report_pos = []
             self._dmp_estimate_tempo = []
+            # dump time points during execution
+            self._dmp_exec_time = []
 
     def _load_score(self, midi_path, resolution):
         midi_file = pretty_midi.PrettyMIDI(midi_path)
@@ -144,6 +151,10 @@ class ScoreFollower:
         with Live(generate_run_info_table(), refresh_per_second=4, transient=True) as live:
             # share `live` within the class instance
             self._live_display = live
+            if self._dump:
+                cur_time = time.time()
+                self._dmp_exec_time.append(cur_time)
+                self._dmp_exec_time.append(cur_time)
             self._audio_input.loop()  # blocking, block main process for reading, use separate thread for processing
         # some cleaning work after loop
         # kill auto accompaniment process
@@ -186,6 +197,7 @@ class ScoreFollower:
             np.save(f"output/{self._config['name']}/sf_confidence.npy", self._dmp_confidence)
             np.save(f"output/{self._config['name']}/sf_report_pos.npy", self._dmp_report_pos)
             np.save(f"output/{self._config['name']}/sf_estimate_tempo.npy", self._dmp_estimate_tempo)
+            np.save(f"output/{self._config['name']}/sf_exec_time.npy", self._dmp_exec_time)
 
             # dump data points about score
             np.save(f"output/{self._config['name']}/sf_sax_time.npy", self._sax_time)
@@ -193,6 +205,9 @@ class ScoreFollower:
             np.save(f"output/{self._config['name']}/sf_sax_onset.npy", self._sax_onset)
 
     def _proc(self, a_time, prev_a_time, a_data, a_input: audio_io.AudioInput):
+        if self._dump:
+            self._dmp_exec_time.append(time.time())
+
         a_relative_time = a_time - a_input.start_time
         # `a_` means `Audio`
         # called by audio input, execute in thread pool
@@ -246,7 +261,10 @@ class ScoreFollower:
                                                 pitch_proc=self._pitch_proc,
                                                 w=w)
         # posterior
-        self._f_source = f_i_given_d * f_v_given_i
+        if not IGNORE_OBSERVATION:
+            self._f_source = f_i_given_d * f_v_given_i
+        else:
+            self._f_source = f_i_given_d
         self._f_source = self._gate_mask(self._f_source, center=self._cur_pos,
                                          half_size=math.ceil(self._config['gate_post'] / 2 * self._points_per_second))
         self._f_source = self._normalize(self._f_source)
@@ -350,7 +368,7 @@ class ScoreFollower:
 
         # determine no_move flag
         # if no sound in performance, do not push forward before the start of a note
-        if self._cur_pos < self._sax_length - 1:
+        if not IGNORE_OBSERVATION and self._cur_pos < self._sax_length - 1:
             self._no_move = a_pitch == signal_processing.PitchProcessorCore.NO_PITCH and (
                     self._sax_pitch[self._cur_pos + 1] != signal_processing.PitchProcessorCore.NO_PITCH or
                     self._sax_pitch[self._cur_pos] != signal_processing.PitchProcessorCore.NO_PITCH)
@@ -365,14 +383,21 @@ class ScoreFollower:
                                                            self._score_tempo,
                                                            self._no_move)))
 
+        if self._dump:
+            self._dmp_exec_time.append(time.time())
+
+
     def _compute_f_i_j_given_d(self, time_axis, d, score_tempo, estimated_tempo):
         rate_ratio = estimated_tempo / score_tempo if estimated_tempo > 0 else 1e-5 / score_tempo
-        sigma_square = math.log(1 / (21 * d) + 1)
+        sigma_square = math.log(1 / (100 * d) + 1)
         sigma = math.sqrt(sigma_square)
         mu = math.log(d * rate_ratio) - sigma_square / 2
         f_i_j_given_d = np.divide(1, time_axis, where=time_axis != 0) * sigma * math.sqrt(2 * math.pi) * np.exp(
             - ((np.log(time_axis, where=time_axis != 0) - mu) ** 2 / (2 * sigma ** 2)))
         f_i_j_given_d[0] = 0
+        f_sum = np.sum(f_i_j_given_d)
+        if f_sum != 0:
+            f_i_j_given_d = np.divide(f_i_j_given_d, f_sum)
         return f_i_j_given_d
 
     def _compute_f_i_given_d(self, f_source, f_i_j_given_d, cur_pos, axis_length):
@@ -386,6 +411,9 @@ class ScoreFollower:
         f_i_given_d_w = np.convolve(f_source_w, f_i_j_given_d_w)
         f_i_given_d_w = f_i_given_d_w[:right - left]  # slice to window size
         f_i_given_d[left:right] = f_i_given_d_w
+        f_sum = np.sum(f_i_given_d)
+        if f_sum != 0:
+            f_i_given_d = np.divide(f_i_given_d, f_sum)
         return f_i_given_d
 
     def _compute_f_v_given_i(self, pitch_axis, onset_axis, cur_pos, axis_length, audio_pitch, audio_onset, pitch_proc,

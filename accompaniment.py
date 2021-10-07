@@ -68,10 +68,11 @@ class AutoAccompaniment:
             self._dmp_real_time = []
             self._dmp_play_time = []
             self._dmp_computed_tempo = []
+            self._dmp_exec_time = []
 
     def loop(self):
         # wait for starting signal
-        console.print('[green bold]Module ready. Waiting for signal...')
+        console.print('[green bold]Accompaniment module ready. Waiting for score following module...')
         while True:
             msg = self._msg_receiver()
             if msg is not None and msg['type'] == 'start':
@@ -98,20 +99,16 @@ class AutoAccompaniment:
             piano = pretty_midi.Instrument(program=pretty_midi.instrument_name_to_program('Cello'))
             ax_time = [0] + [x - self._peer_start_time for x in self._dmp_real_time]
             ax_pos = [0] + [x for x in self._dmp_play_time]
-            on_going_notes = []
-            for i in range(1, len(ax_pos)):
-                for note in midi_ref.instruments[0].notes:
+            on_going_note = None
+            for note in midi_ref.instruments[0].notes:
+                for i in range(1, len(ax_pos)):
                     if ax_pos[i - 1] <= note.start <= ax_pos[i]:
-                        on_going_notes.append((ax_time[i], note.pitch, note.velocity))
-                    if ax_pos[i - 1] <= note.end <= ax_pos[i]:
-                        for j in range(len(on_going_notes)):
-                            if on_going_notes[j][1] == note.pitch and on_going_notes[j][2] == note.velocity:
-                                piano.notes.append(pretty_midi.Note(start=on_going_notes[j][0],
-                                                                    end=ax_time[i],
-                                                                    pitch=on_going_notes[j][1],
-                                                                    velocity=on_going_notes[j][2]))
-                            del on_going_notes[j]
-                            break
+                        on_going_note = (ax_time[i], note.pitch, note.velocity)
+                    if on_going_note is not None and ax_pos[i - 1] <= note.end <= ax_pos[i]:
+                        piano.notes.append(pretty_midi.Note(start=on_going_note[0],
+                                                            end=ax_time[i],
+                                                            pitch=on_going_note[1],
+                                                            velocity=on_going_note[2]))
             midi_new.instruments.append(piano)
             midi_new.write(f"output/{self._dump_dir}/ac_output.mid")
             # copy original accompaniment MIDI file

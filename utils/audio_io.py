@@ -122,23 +122,23 @@ class MicrophoneInput(AudioInput):
             self._dump_data = []
 
     def loop(self):
-        while self._running:
-            bytes_read = self._stream.read(self._chunk)
-            if self._first_run:
-                self._first_run = False
-                # only execute in the first time
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+            while self._running:
+                bytes_read = self._stream.read(self._chunk)
                 read_time = time.time()
-                self._start_time = read_time - self._chunk_dur
-                self._prev_time = read_time - self._chunk_dur
-            else:
-                read_time = self._prev_time + self._chunk_dur
-            if self._dump:
-                self._dump_data.append(bytes_read)
-            data = np.frombuffer(bytes_read, dtype=np.int16)
-            # sampling width in microphone input is fixed to 16bit
-            data = np.true_divide(data, 2 ** 15, dtype=np.float32)
-            self._proc(read_time, self._prev_time, data, self)  # process sync
-            self._prev_time = read_time
+                if self._first_run:
+                    self._first_run = False
+                    # only execute in the first time
+                    self._start_time = read_time - self._chunk_dur
+                    self._prev_time = read_time - self._chunk_dur
+                if self._dump:
+                    self._dump_data.append(bytes_read)
+                data = np.frombuffer(bytes_read, dtype=np.int16)
+                # sampling width in microphone input is fixed to 16bit
+                data = np.true_divide(data, 2 ** 15, dtype=np.float32)
+                # self._proc(read_time, self._prev_time, data, self)  # process sync
+                executor.submit(self._proc, read_time, self._prev_time, data, self)
+                self._prev_time = read_time
 
         # some internal cleaning work
         self._stream.stop_stream()
