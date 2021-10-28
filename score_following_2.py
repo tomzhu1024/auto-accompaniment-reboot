@@ -21,7 +21,7 @@ from utils import audio_io, shared_utils, udp_pipe, signal_processing
 
 IGNORE_OBSERVATION = False
 MOCK_RATE_RATIO = None
-LPF_SIZE = 15
+LPF_SIZE = 2
 OBSERVATION_REG_INTERVAL = 20
 OBSERVATION_REG_LIMIT = 20
 
@@ -274,7 +274,7 @@ class ScoreFollower:
                                                     axis_length=self._sax_length)
             f_i_given_d = self._normalize(f_i_given_d)
         # update position
-        self._cur_pos = get_mode_with_lpf(f_i_given_d)
+        # self._cur_pos = get_mode_with_lpf(f_i_given_d)
 
         # observation
         f_v_given_i = self._compute_f_v_given_i(pitch_axis=self._sax_pitch,

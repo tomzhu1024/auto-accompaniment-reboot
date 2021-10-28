@@ -36,6 +36,10 @@ config = {
     #   * Advanced options
     'gate_post': 25,
 
+    # The time to wait between each tempo re-estimation
+    #   * Advanced options
+    'tempo_estimate_interval': 1,
+
     # The time to wait between each IPC message
     #   * Advanced options
     'pos_report_interval': 1,
@@ -57,7 +61,7 @@ config = {
     # Output mode of accompaniment
     #   > `0` - Virtual MIDI synthesizer
     #   > `1` - External MIDI synthesizer
-    'acco_mode': 1,
+    'acco_mode': 0,
 
     # Name of External MIDI Device
     #   * Takes effect only when `acco_mode` is set to `1`
