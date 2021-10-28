@@ -3,6 +3,7 @@ import os
 import platform
 import time
 import wave
+from typing import Optional, Mapping, Tuple
 
 import numpy as np
 import pretty_midi
@@ -119,32 +120,35 @@ class MicrophoneInput(AudioInput):
         self._chunk_dur = self._chunk / self._samp_rate
 
         self._audio = pyaudio.PyAudio()
-        self._stream = self._audio.open(format=pyaudio.paInt16,
+        self._stream = self._audio.open(format=pyaudio.paInt16,  # fix to 16 bit signed int
                                         channels=1,
                                         rate=self._samp_rate,
                                         input=True,
-                                        frames_per_buffer=self._chunk)
+                                        frames_per_buffer=self._chunk,
+                                        stream_callback=self._callback)
         if self._dump:
             self._dump_data = []
 
+    def _callback(self, in_data: Optional[bytes], frame_count: int, time_info: Mapping[str, float], status: int) -> \
+            Tuple[Optional[bytes], int]:
+        read_time = time.time()
+        if self._first_run:
+            self._first_run = False
+            # calculate start time and previous time
+            self._start_time = read_time - self._chunk_dur
+            self._prev_time = read_time - self._chunk_dur
+        if self._dump:
+            self._dump_data.append(in_data)
+        data = np.frombuffer(in_data, dtype=np.int16)
+        data = np.true_divide(data, 2 ** 15, dtype=np.float32)  # fix to 16 bit signed int
+        self._proc(read_time, self._prev_time, data, self)  # process synchronously
+        self._prev_time = read_time
+        return None, pyaudio.paContinue if self._running else pyaudio.paComplete
+
     def loop(self):
-        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-            while self._running:
-                bytes_read = self._stream.read(self._chunk)
-                read_time = time.time()
-                if self._first_run:
-                    self._first_run = False
-                    # only execute in the first time
-                    self._start_time = read_time - self._chunk_dur
-                    self._prev_time = read_time - self._chunk_dur
-                if self._dump:
-                    self._dump_data.append(bytes_read)
-                data = np.frombuffer(bytes_read, dtype=np.int16)
-                # sampling width in microphone input is fixed to 16bit
-                data = np.true_divide(data, 2 ** 15, dtype=np.float32)
-                # self._proc(read_time, self._prev_time, data, self)  # process sync
-                executor.submit(self._proc, read_time, self._prev_time, data, self)
-                self._prev_time = read_time
+        self._stream.start_stream()
+        while self._stream.is_active():
+            time.sleep(0.1)
 
         # some internal cleaning work
         self._stream.stop_stream()
