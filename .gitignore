@@ -1,8 +1,8 @@
-# Python
+# Python Cache File
 __pycache__/
 
-# IDE
-/.idea/
+# JetBrain IDE
+.idea/
 
-# Project-specified
-/output/
+# Output Files
+output/

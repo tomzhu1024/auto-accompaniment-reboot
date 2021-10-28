@@ -1,6 +1,6 @@
 config = {
     # Name of the profile
-    'name': 'secret_cannot_say_old',
+    'name': 'live_test',
 
     # Input mode of performance
     #   > `0` - wave file
@@ -9,7 +9,7 @@ config = {
 
     # File path of performance wave file
     #   * Takes effects only when `perf_mode` is set to `0`
-    'perf_audio': 'resources/secret_cannot_say_ref.wav',
+    'perf_audio': 'resources/mercury_diary_ref.wav',
 
     # Sample rate of performance input
     #   * Takes effects only when `perf_mode` is set to `1`
@@ -49,10 +49,10 @@ config = {
     'audio_input_latency': 0,
 
     # File path of performance MIDI file
-    'score_midi': 'resources/pop909/pop909_melody/063.mid',
+    'score_midi': 'resources/pop909/pop909_melody/561.mid',
 
     # File path of accompaniment MIDI file
-    'acco_midi': 'resources/pop909/pop909_melody/063.mid',
+    'acco_midi': 'resources/pop909/pop909_acco/561.mid',
 
     # Output mode of accompaniment
     #   > `0` - Virtual MIDI synthesizer

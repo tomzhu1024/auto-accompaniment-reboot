@@ -62,9 +62,10 @@ class WaveFileInput(AudioInput):
                                         channels=self._wf.getnchannels(),
                                         rate=self._wf.getframerate(),
                                         output=True)
+        self._data = None
 
     def loop(self):
-        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
             while self._running:
                 bytes_read = self._wf.readframes(self._chunk)
                 # when use wave file as input, also write it to an output stream
@@ -79,23 +80,28 @@ class WaveFileInput(AudioInput):
                 # in order to align two inputs' behavior, when use wave file as input,
                 # pass audio data to processor after playback finishes
                 future = executor.submit(self._stream.write, bytes_read)  # play async
-                future.result()  # wait for play end
+
+                read_time = time.time()  # get from clock
                 if self._first_run:
                     self._first_run = False
-                    # only execute in the first time
-                    read_time = time.time()
-                    self._start_time = read_time - self._chunk_dur
-                    self._prev_time = read_time - self._chunk_dur
+                    # calculate start time and previous time
+                    self._start_time = read_time  # at this time, the audio just started to play
                 else:
-                    read_time = self._prev_time + self._chunk_dur
-                data = np.frombuffer(bytes_read, dtype=self._dtype)
-                if len(data) != self._chunk:
-                    # reaches file end, or remaining samples are insufficient to composite one chunk
-                    self._running = False
-                    continue
-                data = np.true_divide(data, self._denom, dtype=np.float32)
-                executor.submit(self._proc, read_time, self._prev_time, data, self)  # process async
+                    if len(self._data) != self._chunk:
+                        # reaches file end, remaining samples are insufficient to composite one chunk
+                        self._running = False
+                        break
+                    self._proc(read_time, self._prev_time, self._data, self)  # process synchronously
                 self._prev_time = read_time
+
+                # transform data
+                self._data = np.frombuffer(bytes_read, dtype=self._dtype)
+                self._data = np.true_divide(self._data, self._denom, dtype=np.float32)
+
+                # time alignment
+                if future.done():
+                    raise Exception('audio processor took too long to finish')
+                future.result()  # wait for play end
 
         # some internal cleaning work
         self._wf.close()
