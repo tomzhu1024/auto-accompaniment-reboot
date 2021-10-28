@@ -1,6 +1,6 @@
 config = {
     # Name of the profile
-    'name': 'mercury_diary',
+    'name': 'live_test',
 
     # Input mode of performance
     #   > `0` - wave file
@@ -39,10 +39,6 @@ config = {
     # The time to wait between each IPC message
     #   * Advanced options
     'pos_report_interval': 1,
-
-    # The beat to wait between each tempo estimation
-    #   * Advanced options
-    'tempo_estimate_interval': 2,
 
     # The number of historical points the regression model takes consideration into
     #   * Advanced options
