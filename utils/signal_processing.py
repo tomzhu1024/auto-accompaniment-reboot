@@ -16,6 +16,8 @@ class PitchProcessorCore:
         self._result_reverse = PitchProcessorCore.NO_PITCH
 
     def __call__(self, value):
+        self._result = value % 12
+        return self._result
         if value != PitchProcessorCore.NO_PITCH:
             if self._prev_pitches is None:
                 self._prev_pitches = np.full(PitchProcessorCore.DEPTH, value % 12)
@@ -43,6 +45,7 @@ class PitchProcessorCore:
         return self._result
 
     def result(self, reference=None):
+        return self._result
         if reference and abs(self._cur_pitch - reference) > abs(self._cur_pitch_reverse - reference):
             return self._result_reverse
         else:

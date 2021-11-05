@@ -12,7 +12,7 @@ import pyaudio
 from . import shared_utils
 
 
-class AudioInput:
+class AbcAudioInput:
     # abstract class that should never be instantiated
     def __init__(self, config):
         self._chunk = config['perf_chunk']  # number of samples processed each iteration
@@ -36,7 +36,7 @@ class AudioInput:
         return self._start_time
 
 
-class WaveFileInput(AudioInput):
+class WaveFileInput(AbcAudioInput):
     def __init__(self, config):
         super().__init__(config)
 
@@ -101,7 +101,7 @@ class WaveFileInput(AudioInput):
 
                 # time alignment
                 if future.done():
-                    raise Exception('audio processor took too long to finish')
+                    print('WARNING: audio processor took too long to finish')
                 future.result()  # wait for play end
 
         # some internal cleaning work
@@ -111,7 +111,7 @@ class WaveFileInput(AudioInput):
         self._audio.terminate()
 
 
-class MicrophoneInput(AudioInput):
+class MicrophoneInput(AbcAudioInput):
     def __init__(self, config):
         super().__init__(config)
 
@@ -165,7 +165,7 @@ class MicrophoneInput(AudioInput):
             wave_file.close()
 
 
-class MIDISynthesizer:
+class AbcMIDISynthesizer:
     def note_on(self, pitch, velocity):
         pass
 
@@ -176,8 +176,8 @@ class MIDISynthesizer:
         pass
 
 
-class VirtualSynthesizer(MIDISynthesizer):
-    def __init__(self):
+class VirtualSynthesizer(AbcMIDISynthesizer):
+    def __init__(self, soundfont: str):
         # get platform
         pf = platform.platform()
         if pf.startswith('Windows'):
@@ -196,7 +196,7 @@ class VirtualSynthesizer(MIDISynthesizer):
             self._fs.start(driver='coreaudio')
         else:
             raise Exception('unsupported platform')
-        sf = self._fs.sfload(r'resources/soundfont.sf2')
+        sf = self._fs.sfload(soundfont)
         self._fs.program_select(0, sf, 0, 0)
 
     def note_on(self, pitch, velocity):
@@ -209,7 +209,7 @@ class VirtualSynthesizer(MIDISynthesizer):
         self._fs.delete()
 
 
-class ExternalSynthesizer(MIDISynthesizer):
+class ExternalSynthesizer(AbcMIDISynthesizer):
     def __init__(self, config):
         import rtmidi
 
@@ -237,7 +237,7 @@ class ExternalSynthesizer(MIDISynthesizer):
         del self._midi_port
 
 
-class AudioOutput:
+class AbcAudioOutput:
     def __init__(self):
         self._running = True  # flag
         self._proc = None
@@ -263,10 +263,8 @@ class AudioOutput:
         return
 
 
-class MIDIPlayer(AudioOutput):
-    TICK_INT = 0.02  # second to wait between ticks, note that time.sleep() is not accurate
-
-    def __init__(self, midi_path, output: MIDISynthesizer):
+class MIDIPlayer(AbcAudioOutput):
+    def __init__(self, midi_path, output: AbcMIDISynthesizer):
         super().__init__()
 
         self._midi_events, self._midi_tempo = MIDIPlayer._load_midi(midi_path)  # tempo in BPS
@@ -309,7 +307,7 @@ class MIDIPlayer(AudioOutput):
         # start looping
         while self._running:
             self._tick()
-            time.sleep(MIDIPlayer.TICK_INT)
+            time.sleep(0.02)
         # some internal cleaning work
         self._output.close()
 
@@ -317,9 +315,9 @@ class MIDIPlayer(AudioOutput):
         # time.sleep() is inaccurate, always use time.time() for time measurement
         cur_tick = time.time()
         if self._first_run:
+            self._first_run = False
             elapsed_time = 0
             self._prev_tick = cur_tick
-            self._first_run = False
         else:
             elapsed_time = cur_tick - self._prev_tick
             self._prev_tick = cur_tick

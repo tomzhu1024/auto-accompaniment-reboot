@@ -49,9 +49,10 @@ class AutoAccompaniment:
         self._fax_conf = np.full(self._config['regression_depth'], 0.001)
         self._peer_start_time = 0
         self._peer_score_tempo = 0  # in BPS
+        self._perf_tempo = 0
 
         if self._config['acco_mode'] == 0:
-            self._player = audio_io.MIDIPlayer(self._midi_path, audio_io.VirtualSynthesizer())
+            self._player = audio_io.MIDIPlayer(self._midi_path, audio_io.VirtualSynthesizer(r'resources/soundfont.sf2'))
         elif self._config['acco_mode'] == 1:
             self._player = audio_io.MIDIPlayer(self._midi_path, audio_io.ExternalSynthesizer(self._config))
         else:
@@ -78,12 +79,11 @@ class AutoAccompaniment:
             if msg is not None and msg['type'] == 'start':
                 self._peer_start_time = msg['time']
                 self._peer_score_tempo = msg['tempo'] / 60
+                self._perf_tempo = self._peer_score_tempo
                 self._follow_tempo = self._peer_score_tempo
                 self._follow_tempo_ratio = 1
                 break
-            # wait an arbitrary time to avoid too much resource consumption,
-            # for simplicity, use `audio_io.MIDIPlayer.TICK_INT` here
-            time.sleep(audio_io.MIDIPlayer.TICK_INT)
+            time.sleep(0.02)
         with Live(generate_run_info_table(), refresh_per_second=4, transient=True) as live:
             # share `live` within the class instance
             self._live_display = live
@@ -141,12 +141,13 @@ class AutoAccompaniment:
             # all beats mean beats in performance score
             wls_model = sm.WLS(self._fax_pos, sm.add_constant(self._fax_time), weights=self._fax_conf)
             fit_params = wls_model.fit().params
-            perf_tempo = fit_params[1]  # estimated performance tempo in BPS, use weighted linear regression
-            if perf_tempo > 0:
+            # estimated performance tempo in BPS, use weighted linear regression
+            self._perf_tempo = 0.5 * self._perf_tempo + 0.5 * fit_params[1]
+            if self._perf_tempo > 0:
                 current_pos = a_output.current_time * self._peer_score_tempo
                 # the reason to use max() here is that UDP does not guarantee the order of arrival of packets
                 self._follow_tempo = (fit_params[0] + (a_time - self._peer_start_time) * fit_params[1] + 4 - current_pos
-                                      ) / (4 / perf_tempo - self._config['audio_input_latency'])
+                                      ) / (4 / self._perf_tempo - self._config['audio_input_latency'])
                 self._follow_tempo = max(0, self._follow_tempo)  # in BPS
                 # ratio compared to original performance tempo
                 self._follow_tempo_ratio = self._follow_tempo / self._peer_score_tempo
