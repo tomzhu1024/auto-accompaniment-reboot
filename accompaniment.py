@@ -125,7 +125,6 @@ class AutoAccompaniment:
             msg = self._msg_receiver()
             if msg is not None and msg['type'] == 'stop':
                 a_output.kill()
-                has_update = False
                 break
             elif msg is not None and msg['type'] == 'update':
                 self._fax_time = np.roll(self._fax_time, 1)
@@ -139,10 +138,15 @@ class AutoAccompaniment:
                 break
         if has_update:
             # all beats mean beats in performance score
+            # estimated performance tempo in BPS, use weighted linear regression
             wls_model = sm.WLS(self._fax_pos, sm.add_constant(self._fax_time), weights=self._fax_conf)
             fit_params = wls_model.fit().params
-            # estimated performance tempo in BPS, use weighted linear regression
-            self._perf_tempo = 0.5 * self._perf_tempo + 0.5 * fit_params[1]
+            new_perf_tempo = fit_params[1]
+            # if new_perf_tempo > 1.1 * self._perf_tempo:
+            #     new_perf_tempo = 1.1 * self._perf_tempo
+            # elif new_perf_tempo < 0.9 * self._perf_tempo:
+            #     new_perf_tempo = 0.9 * self._perf_tempo
+            self._perf_tempo = new_perf_tempo
             if self._perf_tempo > 0:
                 current_pos = a_output.current_time * self._peer_score_tempo
                 # the reason to use max() here is that UDP does not guarantee the order of arrival of packets

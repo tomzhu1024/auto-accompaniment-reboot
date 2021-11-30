@@ -13,8 +13,6 @@ from rich.table import Table
 import global_config
 from utils import audio_io, shared_utils, udp_pipe, signal_processing
 
-IGNORE_OBSERVATION = False
-OBSERVATION_DROP_RATIO = 7.5
 
 def generate_run_info_table(params=None) -> Table:
     table = Table()
@@ -57,21 +55,38 @@ class ScoreFollower:
         # the number of data points the density functions contains within one second
         self._points_per_second = math.ceil(1 / self._resolution)
         # `sax_` means `Score AXis`
-        self._score_tempo, self._sax_time, self._sax_pitch, self._sax_onset, self._sax_length, \
-        self._tempo_estimation_pos_lst = self._load_score(self._config['score_midi'], self._resolution)
+        self._score_tempo, self._sax_time, self._sax_pitch, self._sax_onset, self._sax_length = self._load_score(
+            self._config['score_midi'], self._resolution)
         self._f_source = np.zeros(self._sax_length)
         self._f_source[0] = 1
         self._cur_pos = 0
         self._estimated_tempo = self._score_tempo
         self._prev_tempo_pos = 0
-        self._prev_tempo_time = 0
-        self._prev_report_time = 0
+        self._prev_tempo_time = None
+        self._prev_report_time = None
         self._first_run = True
         self._no_move = False
         # use this x-axis to compute expectation
         self._f_x_axis = np.arange(self._sax_length)
+
+        # generate list of time-on-score for tempo estimation
+        self._tempo_estimation_pos_lst = np.arange(60 / self._score_tempo, self._sax_length * self._resolution,
+                                                   60 / self._score_tempo)
+        # convert time to index
+        self._tempo_estimation_pos_lst = [round(x / self._resolution) for x in self._tempo_estimation_pos_lst]
         # record the index of the list of tempo estimation position
         self._tempo_estimation_pos_idx = 0
+
+        # generate list of time-on-score for beat-wise regularization
+        self._beat_reg_pos_lst = np.arange(60 / self._score_tempo, self._sax_length * self._resolution,
+                                           60 / self._score_tempo * self._config['beat_reg_dist'])
+        # convert time to index
+        self._beat_reg_pos_lst = [round(x / self._resolution) for x in self._beat_reg_pos_lst]
+        # record the index of the list of beat-wise regularization
+        self._beat_reg_pos_idx = 0
+        # record the previous info of beat-wise regularization
+        self._prev_beat_reg_pos = 0
+        self._prev_beat_reg_time = None
 
         self._tempo_ub = None
         self._tempo_lb = None
@@ -146,12 +161,7 @@ class ScoreFollower:
         for i in range(sax_length):
             sax_pitch[i] = score_pitch_proc(pitches[i])
 
-        # generate list of time-on-score for tempo estimation
-        tempo_est_pos_lst = np.arange(60 / score_tempo, sax_length * resolution, 60 / score_tempo)
-        # convert time to index
-        tempo_est_pos_lst = [round(x / resolution) for x in tempo_est_pos_lst]
-
-        return score_tempo, sax_time, sax_pitch, sax_onset, sax_length, tempo_est_pos_lst
+        return score_tempo, sax_time, sax_pitch, sax_onset, sax_length
 
     def loop(self):
         with Live(generate_run_info_table(), refresh_per_second=4, transient=True) as live:
@@ -221,6 +231,7 @@ class ScoreFollower:
             self._first_run = False
             self._prev_report_time = a_input.start_time
             self._prev_tempo_time = a_input.start_time
+            self._prev_beat_reg_time = a_input.start_time
             # send message to activate auto accompaniment
             self._msg_sender({
                 'type': 'start',
@@ -229,16 +240,18 @@ class ScoreFollower:
             })
 
         a_pitch = self._pitch_proc(a_data)
-        a_onset = self._onset_proc(a_data)
+        # a_onset = self._onset_proc(a_data)
+        a_onset = False
 
         # w-values fully depends on confidence of last estimation
         # if high-confidence, pitch weights more
         # if low-confidence, onset weights more
         # `f_source` and `cur_pos` remains unchanged here
-        if self._f_source[self._cur_pos] > 0.1:
-            w = (0.95, 0.05, 0.5)
-        else:
-            w = (0.7, 0.3, 0.3)
+        # if self._f_source[self._cur_pos] > 0.1:
+        #     w = (0.95, 0.05, 0.5)
+        # else:
+        #     w = (0.7, 0.3, 0.3)
+        w = (1, 0, 1)
 
         # prior
         if self._no_move:
@@ -255,7 +268,6 @@ class ScoreFollower:
                                                     axis_length=self._sax_length)
             f_i_given_d = self._normalize(f_i_given_d)
         # update position
-        last_pos = self._cur_pos
         self._cur_pos = round(self._f_x_axis.dot(f_i_given_d))
 
         # observation
@@ -268,50 +280,12 @@ class ScoreFollower:
                                                 pitch_proc=self._pitch_proc,
                                                 w=w)
         # posterior
-        if not IGNORE_OBSERVATION:
-            tmp_f_source = f_i_given_d * f_v_given_i
-            tmp_f_source = self._gate_mask(tmp_f_source, center=self._cur_pos,
-                                           half_size=math.ceil(self._config['gate_post'] / 2 * self._points_per_second))
-            tmp_f_source = self._normalize(tmp_f_source)
-            tmp_cur_pos = round(self._f_x_axis.dot(tmp_f_source))
-            observation_pushed_time = (tmp_cur_pos - last_pos) * self._resolution
-            if observation_pushed_time < (a_time - prev_a_time) * (
-                    1 - OBSERVATION_DROP_RATIO) * self._estimated_tempo / self._score_tempo:
-                if 1 - OBSERVATION_DROP_RATIO > 0:
-                    tmp_kernel = self._compute_f_i_j_given_d(time_axis=self._sax_time,
-                                                             d=(a_time - prev_a_time) * (1 - OBSERVATION_DROP_RATIO),
-                                                             score_tempo=self._score_tempo,
-                                                             estimated_tempo=self._estimated_tempo)
-                    self._f_source = self._compute_f_i_given_d(f_source=f_i_given_d,
-                                                               f_i_j_given_d=tmp_kernel,
-                                                               cur_pos=self._cur_pos,
-                                                               axis_length=self._sax_length)
-                else:
-                    self._f_source = f_i_given_d
-                print('negative regulation', end='\t')
-            elif observation_pushed_time > (a_time - prev_a_time) * (
-                    1 + OBSERVATION_DROP_RATIO) * self._estimated_tempo / self._score_tempo:
-                tmp_kernel = self._compute_f_i_j_given_d(time_axis=self._sax_time,
-                                                         d=(a_time - prev_a_time) * (1 + OBSERVATION_DROP_RATIO),
-                                                         score_tempo=self._score_tempo,
-                                                         estimated_tempo=self._estimated_tempo)
-                self._f_source = self._compute_f_i_given_d(f_source=f_i_given_d,
-                                                           f_i_j_given_d=tmp_kernel,
-                                                           cur_pos=self._cur_pos,
-                                                           axis_length=self._sax_length)
-                print('positive regulation', end='\t')
-            else:
-                self._f_source = f_i_given_d * f_v_given_i
-                print('no regulation', end='\t')
-        else:
-            # self._f_source = f_i_given_d
-            self._f_source = f_i_given_d * f_v_given_i
+        self._f_source = f_i_given_d * f_v_given_i
         self._f_source = self._gate_mask(self._f_source, center=self._cur_pos,
                                          half_size=math.ceil(self._config['gate_post'] / 2 * self._points_per_second))
         self._f_source = self._normalize(self._f_source)
         # update position again
         self._cur_pos = round(self._f_x_axis.dot(self._f_source))
-        print(last_pos, '=>', self._cur_pos, '=', (self._cur_pos - last_pos) * self._resolution)
 
         # forcefully close audio input if it follows to the end
         if self._cur_pos >= self._sax_length - 1:
@@ -336,10 +310,45 @@ class ScoreFollower:
         elif self._dump:
             # update dump data, use `0` to mark no reporting event
             self._dmp_report_pos.append(0)
+        # beat-wise regularization
+        # if self._cur_pos >= self._beat_reg_pos_lst[self._beat_reg_pos_idx]:
+        #     delta_score_time = (self._cur_pos - self._prev_beat_reg_pos) * self._resolution
+        #     elapsed_time = a_time - self._prev_beat_reg_time
+        #     upper_bound = elapsed_time * self._estimated_tempo / self._score_tempo * 1.1
+        #     lower_bound = elapsed_time * self._estimated_tempo / self._score_tempo * 0.9
+        #     has_regularization = False
+        #     if delta_score_time > upper_bound:
+        #         shift_pos = math.floor((delta_score_time - upper_bound) / self._resolution)
+        #         if shift_pos > 0:
+        #             # self._f_source = np.roll(self._f_source, -shift_pos)
+        #             # self._f_source[-shift_pos:] = 0
+        #             self._f_source[:] = 0
+        #             self._f_source[self._cur_pos - shift_pos] = 1
+        #             has_regularization = True
+        #             print(f"RBackward\t{(delta_score_time - upper_bound):.2f}")
+        #     elif delta_score_time < lower_bound:
+        #         shift_pos = math.floor((lower_bound - delta_score_time) / self._resolution)
+        #         if shift_pos > 0:
+        #             # self._f_source = np.roll(self._f_source, shift_pos)
+        #             # self._f_source[:shift_pos] = 0
+        #             self._f_source[:] = 0
+        #             self._f_source[self._cur_pos + shift_pos] = 1
+        #             has_regularization = True
+        #             print(f"RForward\t{(lower_bound - delta_score_time):.2f}")
+        #     if has_regularization:
+        #         # normalize
+        #         self._f_source = self._normalize(self._f_source)
+        #         # update position
+        #         self._cur_pos = round(self._f_x_axis.dot(self._f_source))
+        #     self._prev_beat_reg_pos = self._cur_pos
+        #     self._prev_beat_reg_time = a_time
+        #     # update `_beat_reg_pos_idx`
+        #     while self._cur_pos >= self._beat_reg_pos_lst[self._beat_reg_pos_idx]:
+        #         self._beat_reg_pos_idx += 1
         # re-estimate tempo
         if self._cur_pos >= self._tempo_estimation_pos_lst[self._tempo_estimation_pos_idx]:
-            self._tempo_ub = 1.10 * self._estimated_tempo
-            self._tempo_lb = 0.90 * self._estimated_tempo
+            self._tempo_ub = 1.1 * self._estimated_tempo
+            self._tempo_lb = 0.9 * self._estimated_tempo
             self._estimated_tempo = self._estimate_tempo(score_tempo=self._score_tempo,
                                                          delta_pos=self._cur_pos - self._prev_tempo_pos,
                                                          delta_time=a_time - self._prev_tempo_time)
@@ -414,20 +423,20 @@ class ScoreFollower:
 
         # determine no_move flag
         # if no sound in performance, do not push forward before the start of a note
-        if not IGNORE_OBSERVATION and self._cur_pos < self._sax_length - 1:
+        if self._cur_pos < self._sax_length - 1:
             self._no_move = a_pitch == signal_processing.PitchProcessorCore.NO_PITCH and (
                     self._sax_pitch[self._cur_pos + 1] != signal_processing.PitchProcessorCore.NO_PITCH or
                     self._sax_pitch[self._cur_pos] != signal_processing.PitchProcessorCore.NO_PITCH)
 
         # update live display
-        # self._live_display.update(generate_run_info_table((a_pitch,
-        #                                                    a_onset,
-        #                                                    a_relative_time,
-        #                                                    self._sax_time[self._cur_pos],
-        #                                                    self._sax_time[-1],
-        #                                                    self._estimated_tempo,
-        #                                                    self._score_tempo,
-        #                                                    self._no_move)))
+        self._live_display.update(generate_run_info_table((a_pitch,
+                                                           a_onset,
+                                                           a_relative_time,
+                                                           self._sax_time[self._cur_pos],
+                                                           self._sax_time[-1],
+                                                           self._estimated_tempo,
+                                                           self._score_tempo,
+                                                           self._no_move)))
 
         if self._dump:
             self._dmp_exec_time.append(time.time())

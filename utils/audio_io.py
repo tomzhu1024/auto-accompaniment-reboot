@@ -165,6 +165,34 @@ class MicrophoneInput(AbcAudioInput):
             wave_file.close()
 
 
+class MockMIDIInput(AbcAudioInput):
+    def __init__(self, config):
+        super().__init__(config)
+
+        if config['acco_mode'] == 0:
+            self._player = MIDIPlayer(config['score_midi'], VirtualSynthesizer(r'resources/soundfont.sf2'))
+        elif config['acco_mode'] == 1:
+            self._player = MIDIPlayer(config['score_midi'], ExternalSynthesizer(config))
+        else:
+            raise Exception('unsupported accompaniment mode')
+        self._player.connect_to_proc(self._callback)
+
+    def _callback(self, cur_tick, a_output):
+        if self._first_run:
+            self._first_run = False
+            self._prev_time = cur_tick
+            self._start_time = cur_tick
+        else:
+            self._proc(cur_tick, self._prev_time, None, self)
+            self._prev_time = cur_tick
+
+    def loop(self):
+        self._player.loop()
+
+    def kill(self):
+        self._player.kill()
+
+
 class AbcMIDISynthesizer:
     def note_on(self, pitch, velocity):
         pass

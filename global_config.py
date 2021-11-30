@@ -1,15 +1,15 @@
 config = {
     # Name of the profile
-    'name': 'test',
+    'name': 'mocktest',
 
     # Input mode of performance
     #   > `0` - wave file
     #   > `1` - microphone
-    'perf_mode': 1,
+    'perf_mode': 0,
 
     # File path of performance wave file
     #   * Takes effects only when `perf_mode` is set to `0`
-    'perf_audio': 'resources/secret_cannot_say_ref.wav',
+    'perf_audio': 'resources/star.wav',
 
     # Sample rate of performance input
     #   * Takes effects only when `perf_mode` is set to `1`
@@ -52,11 +52,15 @@ config = {
     #   * Advanced options
     'audio_input_latency': 0.2,
 
+    # The interval in beat between beat-wise regularization
+    #   # Advanced options
+    'beat_reg_dist': 0.5,
+
     # File path of performance MIDI file
-    'score_midi': 'resources/pop909/pop909_melody/533.mid',
+    'score_midi': 'resources/pop909/pop909_melody/274.mid',
 
     # File path of accompaniment MIDI file
-    'acco_midi': 'resources/pop909/pop909_acco/533.mid',
+    'acco_midi': 'resources/pop909/pop909_acco/274.mid',
 
     # Output mode of accompaniment
     #   > `0` - Virtual MIDI synthesizer
@@ -72,5 +76,5 @@ config = {
 
     # The time to stop before the score ends, set to `0` to disable it
     #   * Takes effect only when `dump` is set to `True`
-    'trunc_time': 150
+    'trunc_time': 60
 }
