@@ -142,10 +142,10 @@ class AutoAccompaniment:
             wls_model = sm.WLS(self._fax_pos, sm.add_constant(self._fax_time), weights=self._fax_conf)
             fit_params = wls_model.fit().params
             new_perf_tempo = fit_params[1]
-            # if new_perf_tempo > 1.1 * self._perf_tempo:
-            #     new_perf_tempo = 1.1 * self._perf_tempo
-            # elif new_perf_tempo < 0.9 * self._perf_tempo:
-            #     new_perf_tempo = 0.9 * self._perf_tempo
+            if new_perf_tempo > 1.1 * self._perf_tempo:
+                new_perf_tempo = 1.1 * self._perf_tempo
+            elif new_perf_tempo < 0.9 * self._perf_tempo:
+                new_perf_tempo = 0.9 * self._perf_tempo
             self._perf_tempo = new_perf_tempo
             if self._perf_tempo > 0:
                 current_pos = a_output.current_time * self._peer_score_tempo

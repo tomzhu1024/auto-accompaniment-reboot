@@ -1,11 +1,11 @@
 config = {
     # Name of the profile
-    'name': 'mocktest',
+    'name': 'huang_hun',
 
     # Input mode of performance
     #   > `0` - wave file
     #   > `1` - microphone
-    'perf_mode': 0,
+    'perf_mode': 1,
 
     # File path of performance wave file
     #   * Takes effects only when `perf_mode` is set to `0`
@@ -57,10 +57,10 @@ config = {
     'beat_reg_dist': 0.5,
 
     # File path of performance MIDI file
-    'score_midi': 'resources/pop909/pop909_melody/274.mid',
+    'score_midi': 'resources/pop909/pop909_melody/710.mid',
 
     # File path of accompaniment MIDI file
-    'acco_midi': 'resources/pop909/pop909_acco/274.mid',
+    'acco_midi': 'resources/pop909/pop909_acco/710.mid',
 
     # Output mode of accompaniment
     #   > `0` - Virtual MIDI synthesizer
@@ -76,5 +76,5 @@ config = {
 
     # The time to stop before the score ends, set to `0` to disable it
     #   * Takes effect only when `dump` is set to `True`
-    'trunc_time': 60
+    'trunc_time': 0
 }

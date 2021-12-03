@@ -311,44 +311,40 @@ class ScoreFollower:
             # update dump data, use `0` to mark no reporting event
             self._dmp_report_pos.append(0)
         # beat-wise regularization
-        # if self._cur_pos >= self._beat_reg_pos_lst[self._beat_reg_pos_idx]:
-        #     delta_score_time = (self._cur_pos - self._prev_beat_reg_pos) * self._resolution
-        #     elapsed_time = a_time - self._prev_beat_reg_time
-        #     upper_bound = elapsed_time * self._estimated_tempo / self._score_tempo * 1.1
-        #     lower_bound = elapsed_time * self._estimated_tempo / self._score_tempo * 0.9
-        #     has_regularization = False
-        #     if delta_score_time > upper_bound:
-        #         shift_pos = math.floor((delta_score_time - upper_bound) / self._resolution)
-        #         if shift_pos > 0:
-        #             # self._f_source = np.roll(self._f_source, -shift_pos)
-        #             # self._f_source[-shift_pos:] = 0
-        #             self._f_source[:] = 0
-        #             self._f_source[self._cur_pos - shift_pos] = 1
-        #             has_regularization = True
-        #             print(f"RBackward\t{(delta_score_time - upper_bound):.2f}")
-        #     elif delta_score_time < lower_bound:
-        #         shift_pos = math.floor((lower_bound - delta_score_time) / self._resolution)
-        #         if shift_pos > 0:
-        #             # self._f_source = np.roll(self._f_source, shift_pos)
-        #             # self._f_source[:shift_pos] = 0
-        #             self._f_source[:] = 0
-        #             self._f_source[self._cur_pos + shift_pos] = 1
-        #             has_regularization = True
-        #             print(f"RForward\t{(lower_bound - delta_score_time):.2f}")
-        #     if has_regularization:
-        #         # normalize
-        #         self._f_source = self._normalize(self._f_source)
-        #         # update position
-        #         self._cur_pos = round(self._f_x_axis.dot(self._f_source))
-        #     self._prev_beat_reg_pos = self._cur_pos
-        #     self._prev_beat_reg_time = a_time
-        #     # update `_beat_reg_pos_idx`
-        #     while self._cur_pos >= self._beat_reg_pos_lst[self._beat_reg_pos_idx]:
-        #         self._beat_reg_pos_idx += 1
+        if self._cur_pos >= self._beat_reg_pos_lst[self._beat_reg_pos_idx]:
+            delta_score_time = (self._cur_pos - self._prev_beat_reg_pos) * self._resolution
+            elapsed_time = a_time - self._prev_beat_reg_time
+            upper_bound = elapsed_time * self._estimated_tempo / self._score_tempo * 1.02
+            lower_bound = elapsed_time * self._estimated_tempo / self._score_tempo * 0.98
+            has_regularization = False
+            if delta_score_time > upper_bound:
+                shift_pos = math.floor((delta_score_time - upper_bound) / self._resolution)
+                if shift_pos > 0:
+                    self._f_source = np.roll(self._f_source, -shift_pos)
+                    self._f_source[-shift_pos:] = 0
+                    has_regularization = True
+                    print(f"RBackward\t{(delta_score_time - upper_bound):.2f}")
+            elif delta_score_time < lower_bound:
+                shift_pos = math.floor((lower_bound - delta_score_time) / self._resolution)
+                if shift_pos > 0:
+                    self._f_source = np.roll(self._f_source, shift_pos)
+                    self._f_source[:shift_pos] = 0
+                    has_regularization = True
+                    print(f"RForward\t{(lower_bound - delta_score_time):.2f}")
+            if has_regularization:
+                # normalize
+                self._f_source = self._normalize(self._f_source)
+                # update position
+                self._cur_pos = round(self._f_x_axis.dot(self._f_source))
+            self._prev_beat_reg_pos = self._cur_pos
+            self._prev_beat_reg_time = a_time
+            # update `_beat_reg_pos_idx`
+            while self._beat_reg_pos_idx < len(self._beat_reg_pos_lst) and self._cur_pos >= self._beat_reg_pos_lst[self._beat_reg_pos_idx]:
+                self._beat_reg_pos_idx += 1
         # re-estimate tempo
         if self._cur_pos >= self._tempo_estimation_pos_lst[self._tempo_estimation_pos_idx]:
-            self._tempo_ub = 1.1 * self._estimated_tempo
-            self._tempo_lb = 0.9 * self._estimated_tempo
+            self._tempo_ub = 1.001 * self._estimated_tempo
+            self._tempo_lb = 0.999 * self._estimated_tempo
             self._estimated_tempo = self._estimate_tempo(score_tempo=self._score_tempo,
                                                          delta_pos=self._cur_pos - self._prev_tempo_pos,
                                                          delta_time=a_time - self._prev_tempo_time)
@@ -357,7 +353,8 @@ class ScoreFollower:
             self._prev_tempo_pos = self._cur_pos
             self._prev_tempo_time = a_time
             # update `_tempo_estimation_pos_idx`
-            while self._cur_pos >= self._tempo_estimation_pos_lst[self._tempo_estimation_pos_idx]:
+            while self._tempo_estimation_pos_idx < len(self._tempo_estimation_pos_lst) and \
+                    self._cur_pos >= self._tempo_estimation_pos_lst[self._tempo_estimation_pos_idx]:
                 self._tempo_estimation_pos_idx += 1
             # update dump data, record estimated tempo
             if self._dump:
