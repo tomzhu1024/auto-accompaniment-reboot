@@ -1,6 +1,6 @@
 config = {
     # Name of the profile
-    'name': 'huang_hun',
+    'name': 'test',
 
     # Input mode of performance
     #   > `0` - wave file
@@ -65,7 +65,7 @@ config = {
     # Output mode of accompaniment
     #   > `0` - Virtual MIDI synthesizer
     #   > `1` - External MIDI synthesizer
-    'acco_mode': 1,
+    'acco_mode': 0,
 
     # Name of External MIDI Device
     #   * Takes effect only when `acco_mode` is set to `1`

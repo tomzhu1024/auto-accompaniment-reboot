@@ -55,8 +55,8 @@ class ScoreFollower:
         # the number of data points the density functions contains within one second
         self._points_per_second = math.ceil(1 / self._resolution)
         # `sax_` means `Score AXis`
-        self._score_tempo, self._sax_time, self._sax_pitch, self._sax_onset, self._sax_length = self._load_score(
-            self._config['score_midi'], self._resolution)
+        self._score_tempo, self._sax_time, self._sax_pitch, self._sax_onset, self._sax_length, self._tempo_estimation_pos_lst = \
+            self._load_score(self._config['score_midi'], self._resolution)
         self._f_source = np.zeros(self._sax_length)
         self._f_source[0] = 1
         self._cur_pos = 0
@@ -69,11 +69,6 @@ class ScoreFollower:
         # use this x-axis to compute expectation
         self._f_x_axis = np.arange(self._sax_length)
 
-        # generate list of time-on-score for tempo estimation
-        self._tempo_estimation_pos_lst = np.arange(60 / self._score_tempo, self._sax_length * self._resolution,
-                                                   60 / self._score_tempo)
-        # convert time to index
-        self._tempo_estimation_pos_lst = [round(x / self._resolution) for x in self._tempo_estimation_pos_lst]
         # record the index of the list of tempo estimation position
         self._tempo_estimation_pos_idx = 0
 
@@ -149,6 +144,8 @@ class ScoreFollower:
         sax_pitch = np.zeros(sax_length)
         sax_onset = np.zeros(sax_length)
         pitches = np.full(sax_length, signal_processing.PitchProcessorCore.NO_PITCH)
+        long_gaps = []
+        prev_note_end = 0
         for note in instrument.notes:
             start = math.ceil(note.start / resolution)
             end = math.ceil(note.end / resolution) + 1  # end will never go out of range
@@ -157,11 +154,15 @@ class ScoreFollower:
             #     end = start + int(1 / resolution)
             pitches[start: end] = note.pitch
             sax_onset[start] = 1
+            if note.start - prev_note_end > 16 / score_tempo * 60:
+                long_gaps.append(math.ceil(prev_note_end / resolution))
+            prev_note_end = note.end
+
         score_pitch_proc = signal_processing.PitchProcessorCore()
         for i in range(sax_length):
             sax_pitch[i] = score_pitch_proc(pitches[i])
 
-        return score_tempo, sax_time, sax_pitch, sax_onset, sax_length
+        return score_tempo, sax_time, sax_pitch, sax_onset, sax_length, long_gaps
 
     def loop(self):
         with Live(generate_run_info_table(), refresh_per_second=4, transient=True) as live:
@@ -323,14 +324,12 @@ class ScoreFollower:
                     self._f_source = np.roll(self._f_source, -shift_pos)
                     self._f_source[-shift_pos:] = 0
                     has_regularization = True
-                    print(f"RBackward\t{(delta_score_time - upper_bound):.2f}")
             elif delta_score_time < lower_bound:
                 shift_pos = math.floor((lower_bound - delta_score_time) / self._resolution)
                 if shift_pos > 0:
                     self._f_source = np.roll(self._f_source, shift_pos)
                     self._f_source[:shift_pos] = 0
                     has_regularization = True
-                    print(f"RForward\t{(lower_bound - delta_score_time):.2f}")
             if has_regularization:
                 # normalize
                 self._f_source = self._normalize(self._f_source)
@@ -339,12 +338,13 @@ class ScoreFollower:
             self._prev_beat_reg_pos = self._cur_pos
             self._prev_beat_reg_time = a_time
             # update `_beat_reg_pos_idx`
-            while self._beat_reg_pos_idx < len(self._beat_reg_pos_lst) and self._cur_pos >= self._beat_reg_pos_lst[self._beat_reg_pos_idx]:
+            while self._beat_reg_pos_idx < len(self._beat_reg_pos_lst) and \
+                    self._cur_pos >= self._beat_reg_pos_lst[self._beat_reg_pos_idx]:
                 self._beat_reg_pos_idx += 1
         # re-estimate tempo
         if self._cur_pos >= self._tempo_estimation_pos_lst[self._tempo_estimation_pos_idx]:
-            self._tempo_ub = 1.001 * self._estimated_tempo
-            self._tempo_lb = 0.999 * self._estimated_tempo
+            self._tempo_ub = 1.5 * self._estimated_tempo
+            self._tempo_lb = 0.5 * self._estimated_tempo
             self._estimated_tempo = self._estimate_tempo(score_tempo=self._score_tempo,
                                                          delta_pos=self._cur_pos - self._prev_tempo_pos,
                                                          delta_time=a_time - self._prev_tempo_time)
@@ -356,6 +356,7 @@ class ScoreFollower:
             while self._tempo_estimation_pos_idx < len(self._tempo_estimation_pos_lst) and \
                     self._cur_pos >= self._tempo_estimation_pos_lst[self._tempo_estimation_pos_idx]:
                 self._tempo_estimation_pos_idx += 1
+            print(f'update tempo...pos is {self._cur_pos}...new tempo is {self._estimated_tempo}')
             # update dump data, record estimated tempo
             if self._dump:
                 self._dmp_estimate_tempo.append(self._estimated_tempo)
