@@ -1,53 +1,39 @@
 # auto-accompaniment-reboot
 
-An automatic accompaniment system for vocal performance (Python rewritten version).
+A real-time automatic accompaniment system for vocal performances.
 
-Rewritten from [MichaelZhangty/Auto-Acco-2020](https://github.com/MichaelZhangty/Auto-Acco-2020). Enhanced execution performance and improved project structure.
+## Prerequisites
 
-## Structure Description
+### 1. Install Python Dependencies
 
-| Name | Description |
-| :--- | :--- |
-| `bin` | Binary executables |
-| `resources` | Static resources |
-| `utils` | Supporting libraries |
-| `output` | Execution results |
-| `playground` | Experimental stuffs |
-| `global_config.py` | Global configuration file |
-| `score_following.py` | Entry of score following module |
-| `accompaniment.py` | Entry of accompaniment module |
-| `plotter.py` | Entry of plotting module |
+It is highly recommended to use _conda_ for environment management, because _conda_ provides some packages that are difficult to install using other approaches. To use _conda_, you must have [Anaconda](https://docs.anaconda.com/anaconda/install/) or [Miniconda](https://docs.conda.io/en/latest/miniconda.html) installed.
 
-## Configuration Description
+Installing Python dependencies with _conda_ is fairly easy, just run the following command in the terminal:
 
-See comments in `global_config.py`.
-
-## How to use
-
-Start accompaniment module:
-
-```shell
-python accompaniment.py
+```bash
+conda env create -n auto-accompaniment-reboot -f environment.yml
 ```
 
-Then, start score following module:
+### 2. Install FluidSynth Library
 
-```shell
-python score_following.py
-```
+This project makes use of _FluidSynth_ as the real-time software synthesizer. Apart from _pyFluidSynth_, which is the Python binding for _FluidSynth_, you must also install _FluidSynth_.
 
-*Note that* two modules need to run in parallel. Run them in two different shells if you use shell.
+For __Windows__ users,
 
-## To-Do List
+1. Download 
 
-- [ ] Refine visualization tools
-- [ ] Tune parameters
-- [ ] Introducing simple ML techniques
-- [ ] Merge multiple entry points
-- [ ] Replace UDP IPC pipe
-- [ ] Migrate to C++
+## Compatibility
 
-## Known Issues
+Tested on the following platforms:
 
-- `pyfluidsynth` on PyPI has some compatibility issues. Therefore, install a newer version from [GitHub](https://github.com/nwhitehead/pyfluidsynth) instead. See `playground/install_dependencies.sh` for reference.
-- Currently, `bin` folder only contains executables for Windows. For Windows users, no need to prepare any other executables. For Mac users, install `fluidsynth` on your own.
+- Python 3.7.13, _Windows 10 21H1 Build 19044_
+- Python 3.8.13, _macOS 12.3.1 21E258 (Apple Silicon, with Rosetta)_
+- Python 3.8.5, _macOS 12.2.1 21D62 (Intel)_
+
+__
+
+## Reference Projects
+
+- https://github.com/rtchen/accompaniment
+- https://github.com/MichaelZhangty/Auto-Accompaniment
+- https://github.com/MichaelZhangty/Auto-Acco-2020
