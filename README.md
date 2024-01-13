@@ -30,8 +30,6 @@ Tested on the following platforms:
 - Python 3.8.13, _macOS 12.3.1 21E258 (Apple Silicon, with Rosetta)_
 - Python 3.8.5, _macOS 12.2.1 21D62 (Intel)_
 
-__
-
 ## Reference Projects
 
 - https://github.com/rtchen/accompaniment
