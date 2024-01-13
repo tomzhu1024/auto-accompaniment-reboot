@@ -1,8 +1,9 @@
 # Python Cache File
 __pycache__/
 
-# JetBrain IDE
+# IDE and Tools
 .idea/
+.ipynb_checkpoints/
 
 # Output Files
 output/
