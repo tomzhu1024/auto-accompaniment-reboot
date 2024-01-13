@@ -18,9 +18,14 @@ conda env create -n auto-accompaniment-reboot -f environment.yml
 
 This project makes use of _FluidSynth_ as the real-time software synthesizer. Apart from _pyFluidSynth_, which is the Python binding for _FluidSynth_, you must also install _FluidSynth_.
 
-For __Windows__ users,
-
-1. Download 
+- For __Windows__ users, install [Chocolatey](https://chocolatey.org/) and install [FluidSynth](https://community.chocolatey.org/packages/fluidsynth) with the following command:
+    ```shell
+    choco install fluidsynth
+    ```
+- For __macOS__ users, install [Homebrew](https://brew.sh/) and install [FluidSynth](https://formulae.brew.sh/formula/fluid-synth) with the following command:
+    ```shell
+    brew install fluid-synth
+    ```
 
 ## Compatibility
 
